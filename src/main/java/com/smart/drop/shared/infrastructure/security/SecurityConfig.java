@@ -1,5 +1,6 @@
 package com.smart.drop.shared.infrastructure.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.context.annotation.Bean;
@@ -36,6 +37,13 @@ public class SecurityConfig {
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder(12);
+    }
+
+    @Bean
+    public JwtService jwtService(
+            @Value("${authorization.jwt.secret}") String secret) {
+
+        return new JwtService(secret);
     }
 }
 
