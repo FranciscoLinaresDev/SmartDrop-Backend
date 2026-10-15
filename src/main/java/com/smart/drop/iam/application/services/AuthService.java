@@ -7,6 +7,7 @@ import com.smart.drop.iam.domain.model.repositories.RoleRepository;
 import com.smart.drop.iam.domain.exceptions.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.HashSet;
 import java.util.Optional;
@@ -24,11 +25,18 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService(UserRepository userRepository, RoleRepository roleRepository) {
+    public AuthService(
+            UserRepository userRepository,
+            RoleRepository roleRepository,
+            PasswordEncoder passwordEncoder) {
+
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
+        this.passwordEncoder = passwordEncoder;
     }
+
 
     /**
      * Registra un nuevo usuario sin roles.
@@ -38,18 +46,21 @@ public class AuthService {
      * @param passwordHash hash de la contraseña
      * @return el usuario creado y persistido
      */
-    public User registerUser(String fullName, String email, String passwordHash) {
-        // Valida que el email no esté registrado
-        if (userRepository.findByEmail(email).isPresent()) {
-            throw UserAlreadyExistsException.withEmail(email);
-        }
+     public User registerUser(String fullName, String email, String password) {
+         if (userRepository.findByEmail(email).isPresent()) {
+             throw UserAlreadyExistsException.withEmail(email);
+         }
 
-        // Crea la entidad de dominio
-        User user = User.create(fullName, email, passwordHash);
+         if (password == null || password.isBlank()) {
+             throw new IllegalArgumentException("Password cannot be empty");
+         }
 
-        // Persiste y retorna
-        return userRepository.save(user);
-    }
+         String passwordHash = passwordEncoder.encode(password);
+
+         User user = User.create(fullName, email, passwordHash);
+
+         return userRepository.save(user);
+     }
 
     /**
      * Valida las credenciales e inicia sesión para un usuario.
@@ -62,7 +73,8 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> UserNotFoundException.withEmail(email));
 
-        if (!user.getPasswordHash().equals(password)) {
+        if (password == null ||
+                !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
 
@@ -99,8 +111,12 @@ public class AuthService {
                 .filter(u -> token.equals(u.getResetToken()))
                 .findFirst()
                 .orElseThrow(InvalidTokenException::new);
-                
-        user.setPasswordHash(newPassword);
+
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new IllegalArgumentException("Password cannot be empty");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setResetToken(null);
         userRepository.update(user);
     }
@@ -124,15 +140,28 @@ public class AuthService {
         return userRepository.update(user);
     }
 
-    public void changePassword(String email, String currentPassword, String newPassword) {
+    public void changePassword(
+            String email,
+            String currentPassword,
+            String newPassword) {
+
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> UserNotFoundException.withEmail(email));
 
-        if (!user.getPasswordHash().equals(currentPassword)) {
-            throw new IllegalArgumentException("Current password is incorrect");
+        if (currentPassword == null ||
+                !passwordEncoder.matches(
+                        currentPassword,
+                        user.getPasswordHash())) {
+
+            throw new IllegalArgumentException(
+                    "Current password is incorrect");
         }
 
-        user.setPasswordHash(newPassword);
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new IllegalArgumentException("Password cannot be empty");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.update(user);
     }
 
