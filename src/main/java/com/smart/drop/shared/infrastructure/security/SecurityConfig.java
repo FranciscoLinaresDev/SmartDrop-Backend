@@ -26,8 +26,7 @@ public class SecurityConfig {
         http
             .csrf(csrf -> csrf.disable())
             .authorizeHttpRequests(auth -> auth
-                // Permitimos todo temporalmente para pruebas locales
-                .anyRequest().permitAll()
+                .anyRequest().denyAll()
             )
             .httpBasic(Customizer.withDefaults());
 
