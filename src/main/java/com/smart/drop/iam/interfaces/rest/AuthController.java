@@ -1,5 +1,7 @@
 package com.smart.drop.iam.interfaces.rest;
 
+import com.smart.drop.shared.infrastructure.security.JwtService;
+import com.smart.drop.iam.interfaces.rest.dto.LoginResponseDto;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.smart.drop.iam.application.services.AuthService;
 import com.smart.drop.iam.interfaces.rest.dto.LoginUserRequestDto;
@@ -31,9 +33,14 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtService jwtService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(
+            AuthService authService,
+            JwtService jwtService) {
+
         this.authService = authService;
+        this.jwtService = jwtService;
     }
 
     /**
@@ -59,20 +66,40 @@ public class AuthController {
      * @return ResponseEntity con el usuario autenticado
      */
     @PostMapping("/login")
-    public ResponseEntity<?> loginUser(@RequestBody LoginUserRequestDto request) {
-        try {
-            User user = authService.loginUser(request.email(), request.password());
-            UserResponseDto response = toUserResponseDto(user);
-            return ResponseEntity.ok(response);
-        } catch (TwoFactorRequiredException e) {
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("requires2FA", true, "simulatedCode", e.getSimulatedCode(), "message", "A 6-digit code has been sent to your email."));
-        }
-    }
+    public ResponseEntity<?> loginUser(
+            @RequestBody LoginUserRequestDto request) {
 
-    @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequestDto request) {
-        String token = authService.generatePasswordResetToken(request.email());
-        return ResponseEntity.ok(Map.of("success", true, "token", token, "message", "Recovery link simulated in console."));
+        try {
+            User user = authService.loginUser(
+                    request.email(),
+                    request.password()
+            );
+
+            String accessToken = jwtService.createAccessToken(
+                    user.getId(),
+                    user.getEmail()
+            );
+
+            LoginResponseDto response = new LoginResponseDto(
+                    user.getId(),
+                    user.getFullName(),
+                    user.getEmail(),
+                    user.getCreatedAt(),
+                    accessToken,
+                    "Bearer"
+            );
+
+            return ResponseEntity.ok(response);
+
+        } catch (TwoFactorRequiredException e) {
+
+            return ResponseEntity
+                    .status(HttpStatus.ACCEPTED)
+                    .body(Map.of(
+                            "requires2FA", true,
+                            "message", "Additional verification required."
+                    ));
+        }
     }
 
     @PostMapping("/reset-password")
