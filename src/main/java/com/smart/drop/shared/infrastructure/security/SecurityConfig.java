@@ -1,34 +1,47 @@
+
 package com.smart.drop.shared.infrastructure.security;
 
+import com.smart.drop.iam.domain.model.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.crypto.password.PasswordEncoder;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
-/**
- * Configuración de seguridad temporal para pruebas locales.
- * - DESACTIVA CSRF (solo para entornos de desarrollo/local)
- * - Permite acceso a Swagger/OpenAPI y a los endpoints de la API bajo /api/smartdrop/**
- *
- * Quitar o ajustar esta clase antes de desplegar a producción.
- */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(
+            HttpSecurity http,
+            JwtService jwtService,
+            UserRepository userRepository) throws Exception {
+
         http
             .csrf(csrf -> csrf.disable())
+            .sessionManagement(session ->
+                session.sessionCreationPolicy(
+                    SessionCreationPolicy.STATELESS
+                )
+            )
             .authorizeHttpRequests(auth -> auth
                 .anyRequest().denyAll()
             )
-            .httpBasic(Customizer.withDefaults());
+            .httpBasic(basic -> basic.disable())
+            .formLogin(form -> form.disable())
+            .addFilterBefore(
+                new JwtAuthenticationFilter(
+                    jwtService,
+                    userRepository
+                ),
+                UsernamePasswordAuthenticationFilter.class
+            );
 
         return http.build();
     }
@@ -45,4 +58,3 @@ public class SecurityConfig {
         return new JwtService(secret);
     }
 }
-
