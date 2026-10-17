@@ -178,20 +178,24 @@ class TwoFactorChallengeTransactionTest {
             return new TwoFactorCodeHasher(randomSecret());
         }
 
-        @Bean
-        TwoFactorChallengeService testChallengeService(
-                TwoFactorChallengeJpaRepository repository,
-                TwoFactorCodeGenerator generator,
-                TwoFactorCodeHasher hasher,
-                TwoFactorCodeSender sender) {
 
-            return new TwoFactorChallengeService(
-                    repository,
-                    generator,
-                    hasher,
-                    sender,
-                    Clock.systemUTC()
-            );
-        }
+@Bean
+TwoFactorChallengeService testChallengeService(
+        TwoFactorChallengeJpaRepository repository,
+        UserJpaRepository userRepository,
+        TwoFactorCodeGenerator generator,
+        TwoFactorCodeHasher hasher,
+        TwoFactorCodeSender sender) {
+
+    return new TwoFactorChallengeService(
+            repository,
+            userRepository,
+            generator,
+            hasher,
+            sender,
+            Clock.systemUTC()
+    );
+}
+
     }
 }

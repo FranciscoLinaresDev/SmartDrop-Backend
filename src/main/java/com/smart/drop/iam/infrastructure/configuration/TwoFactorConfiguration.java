@@ -3,7 +3,7 @@ package com.smart.drop.iam.infrastructure.configuration;
 
 import com.smart.drop.iam.application.services.*;
 import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.TwoFactorChallengeJpaRepository;
-
+import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.UserJpaRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
@@ -43,16 +43,19 @@ public class TwoFactorConfiguration {
     @Bean
     public TwoFactorChallengeService twoFactorChallengeService(
             TwoFactorChallengeJpaRepository repository,
+            UserJpaRepository userRepository,
             TwoFactorCodeGenerator generator,
             TwoFactorCodeHasher hasher,
             TwoFactorCodeSender sender) {
 
         return new TwoFactorChallengeService(
                 repository,
+                userRepository,
                 generator,
                 hasher,
                 sender,
                 Clock.systemUTC()
         );
     }
+
 }

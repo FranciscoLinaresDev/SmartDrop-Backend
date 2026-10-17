@@ -1,6 +1,9 @@
 
 package com.smart.drop.iam.application.services;
-
+import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.UserJpaRepository;
+import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.TwoFactorChallengeJpaRepository;
+import com.smart.drop.iam.infrastructure.persistence.jpa.entities.UserEntity;
+import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.UserJpaRepository;
 import com.smart.drop.iam.infrastructure.persistence.jpa.entities.TwoFactorChallengeEntity;
 import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.TwoFactorChallengeJpaRepository;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,56 +13,100 @@ import java.time.LocalDateTime;
 
 public class TwoFactorChallengeService {
 
+    private final UserJpaRepository userRepository;
     private final TwoFactorChallengeJpaRepository repository;
     private final TwoFactorCodeGenerator generator;
     private final TwoFactorCodeHasher hasher;
     private final TwoFactorCodeSender sender;
     private final Clock clock;
 
-    public TwoFactorChallengeService(
-            TwoFactorChallengeJpaRepository repository,
-            TwoFactorCodeGenerator generator,
-            TwoFactorCodeHasher hasher,
-            TwoFactorCodeSender sender,
-            Clock clock) {
 
-        this.repository = repository;
-        this.generator = generator;
-        this.hasher = hasher;
-        this.sender = sender;
-        this.clock = clock;
+
+public TwoFactorChallengeService(
+        TwoFactorChallengeJpaRepository repository,
+        UserJpaRepository userRepository,
+        TwoFactorCodeGenerator generator,
+        TwoFactorCodeHasher hasher,
+        TwoFactorCodeSender sender,
+        Clock clock) {
+
+    this.repository = repository;
+    this.userRepository = userRepository;
+    this.generator = generator;
+    this.hasher = hasher;
+    this.sender = sender;
+    this.clock = clock;
+}
+
+
+@Transactional
+public String createAfterPasswordVerified(
+        Integer userId,
+        String email) {
+
+    if (userId == null || userId <= 0 ||
+            email == null || email.isBlank()) {
+        throw new IllegalArgumentException(
+                "Invalid challenge request"
+        );
     }
 
-    @Transactional
-    public String createAfterPasswordVerified(
-            Integer userId,
-            String email) {
-
-        if (userId == null || userId <= 0 ||
-                email == null || email.isBlank()) {
-            throw new IllegalArgumentException(
-                    "Invalid challenge request"
+    // Lock user row to serialize challenge creation.
+    UserEntity user = userRepository
+            .findByIdForUpdate(userId)
+            .orElseThrow(() ->
+                    new IllegalArgumentException(
+                            "Invalid user"
+                    )
             );
-        }
 
-        String code = generator.generateCode();
-
-        LocalDateTime now = LocalDateTime.now(clock);
-
-        TwoFactorChallengeEntity challenge =
-                TwoFactorChallengeEntity.create(
-                        userId,
-                        hasher.hash(userId, code),
-                        now,
-                        now.plusMinutes(5)
-                );
-
-        repository.save(challenge);
-
-        sender.sendCode(email, code);
-
-        return challenge.getChallengeId();
+    // Never send a code to an arbitrary email address.
+    if (!user.getEmail().equalsIgnoreCase(email)) {
+        throw new IllegalArgumentException(
+                "Invalid challenge request"
+        );
     }
+
+    LocalDateTime now = LocalDateTime.now(clock);
+
+    // Only one active challenge per user.
+    if (repository.existsActiveForUser(
+            userId, now, 5)) {
+
+        throw new IllegalStateException(
+                "An active verification challenge already exists"
+        );
+    }
+
+    // Require a 60-second cooldown between requests.
+    var latest = repository
+            .findTopByUserIdOrderByCreatedAtDesc(userId);
+
+    if (latest.isPresent() &&
+            latest.get().getCreatedAt()
+                    .isAfter(now.minusSeconds(60))) {
+
+        throw new IllegalStateException(
+                "Please wait before requesting another code"
+        );
+    }
+
+    String code = generator.generateCode();
+
+    TwoFactorChallengeEntity challenge =
+            TwoFactorChallengeEntity.create(
+                    userId,
+                    hasher.hash(userId, code),
+                    now,
+                    now.plusMinutes(5)
+            );
+
+    repository.save(challenge);
+
+    sender.sendCode(user.getEmail(), code);
+
+    return challenge.getChallengeId();
+}
 
     @Transactional
     public VerificationResult verify(

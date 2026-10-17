@@ -1,8 +1,13 @@
 
 package com.smart.drop.iam.infrastructure.configuration;
 
-import com.smart.drop.iam.application.services.*;
+import com.smart.drop.iam.application.services.TwoFactorChallengeService;
+import com.smart.drop.iam.application.services.TwoFactorCodeGenerator;
+import com.smart.drop.iam.application.services.TwoFactorCodeHasher;
+import com.smart.drop.iam.application.services.TwoFactorCodeSender;
+
 import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.TwoFactorChallengeJpaRepository;
+import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.UserJpaRepository;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
@@ -26,6 +31,7 @@ class TwoFactorConfigurationTest {
     void shouldKeepTwoFactorDisabledByDefault() {
 
         runner.run(context -> {
+
             assertNull(context.getStartupFailure());
 
             assertFalse(context.containsBean(
@@ -53,20 +59,31 @@ class TwoFactorConfigurationTest {
                         "SMARTDROP_TWO_FACTOR_HMAC_KEY=" + secret,
                         "SMARTDROP_MAIL_FROM=noreply@example.com"
                 )
+
                 .withBean(
                         TwoFactorChallengeJpaRepository.class,
                         () -> mock(
                                 TwoFactorChallengeJpaRepository.class
                         )
                 )
+
+                .withBean(
+                        UserJpaRepository.class,
+                        () -> mock(
+                                UserJpaRepository.class
+                        )
+                )
+
                 .withBean(
                         TwoFactorCodeGenerator.class,
                         TwoFactorCodeGenerator::new
                 )
+
                 .withBean(
                         JavaMailSender.class,
                         () -> mock(JavaMailSender.class)
                 )
+
                 .run(context -> {
 
                     assertNull(context.getStartupFailure());
