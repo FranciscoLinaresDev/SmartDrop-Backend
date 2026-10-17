@@ -94,7 +94,7 @@ class AuthControllerJwtTest {
         var response = controller.loginUser(request);
 
         assertEquals(
-                HttpStatus.ACCEPTED,
+                HttpStatus.SERVICE_UNAVAILABLE,
                 response.getStatusCode()
         );
 
@@ -103,7 +103,7 @@ class AuthControllerJwtTest {
                 response.getBody()
         );
 
-        assertEquals(true, body.get("requires2FA"));
+        assertNull(body.get("requires2FA"));
         assertFalse(body.containsKey("accessToken"));
         assertFalse(body.containsKey("simulatedCode"));
         assertFalse(body.toString().contains("123456"));

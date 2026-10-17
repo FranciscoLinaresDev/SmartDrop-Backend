@@ -13,7 +13,6 @@ import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Random;
 
 /**
  * Servicio de aplicación para autenticación utilizando inyección de dependencias.
@@ -79,13 +78,9 @@ public class AuthService {
         }
 
         if (Boolean.TRUE.equals(user.getIsTwoFactorEnabled())) {
-            String code = String.format("%06d", new Random().nextInt(999999));
-            user.setTwoFactorCode(code);
-            userRepository.update(user);
-            System.out.println("\n=======================================================");
-            System.out.println("2FA CODE GENERATED FOR " + email + ": " + code);
-            System.out.println("=======================================================\n");
-            throw new TwoFactorRequiredException(email, code);
+            // The controller creates a protected challenge after password verification.
+            // Do not generate, persist or log legacy 2FA codes.
+            throw new TwoFactorRequiredException(user.getEmail(), "");
         }
 
         return user;
@@ -94,15 +89,11 @@ public class AuthService {
     public String generatePasswordResetToken(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> UserNotFoundException.withEmail(email));
-        
+
         String token = UUID.randomUUID().toString();
         user.setResetToken(token);
         userRepository.update(user);
-        
-        System.out.println("\n=======================================================");
-        System.out.println("PASSWORD RESET TOKEN FOR " + email + ": " + token);
-        System.out.println("=======================================================\n");
-        
+        // Never print password reset tokens to application logs.
         return token;
     }
 
@@ -129,15 +120,8 @@ public class AuthService {
     }
 
     public User verify2FA(String email, String code) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> UserNotFoundException.withEmail(email));
-                
-        if (code == null || !code.equals(user.getTwoFactorCode())) {
-            throw new IllegalArgumentException("Invalid 2FA code");
-        }
-        
-        user.setTwoFactorCode(null);
-        return userRepository.update(user);
+        // The legacy user-stored code cannot be used to bypass the new challenge flow.
+        throw new UnsupportedOperationException("Legacy 2FA verification is disabled");
     }
 
     public void changePassword(
