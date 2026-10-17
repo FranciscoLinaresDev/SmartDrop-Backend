@@ -1,6 +1,12 @@
 
 package com.smart.drop.iam.application.services;
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import com.smart.drop.iam.infrastructure.persistence.jpa.entities.UserEntity;
 import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.UserJpaRepository;
 import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.TwoFactorChallengeJpaRepository;
@@ -208,7 +214,112 @@ class TwoFactorChallengeTransactionTest {
         );
     }
 
-    // HELPER: Create a real challenge in the H2 database.
+
+@Test
+void concurrentRequestsShouldCreateOnlyOneChallenge()
+        throws Exception {
+
+    String email = "concurrent-"
+            + UUID.randomUUID()
+            + "@example.com";
+
+    UserEntity user = users.saveAndFlush(
+            new UserEntity(
+                    "Concurrent Test User",
+                    email,
+                    "test-hash"
+            )
+    );
+
+    reset(sender);
+
+    ExecutorService executor =
+            Executors.newFixedThreadPool(2);
+
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+
+    Callable<Boolean> requestChallenge = () -> {
+
+        ready.countDown();
+
+        if (!start.await(10, TimeUnit.SECONDS)) {
+            throw new IllegalStateException(
+                    "Concurrent test start timed out"
+            );
+        }
+
+        try {
+            service.createAfterPasswordVerified(
+                    user.getUserId(),
+                    email
+            );
+
+            return true;
+
+        } catch (IllegalStateException exception) {
+
+            String message = exception.getMessage();
+
+            if (message != null &&
+                    (message.contains("active verification challenge")
+                    || message.contains("wait before requesting"))) {
+                return false;
+            }
+
+            throw exception;
+        }
+    };
+
+    try {
+        Future<Boolean> first =
+                executor.submit(requestChallenge);
+
+        Future<Boolean> second =
+                executor.submit(requestChallenge);
+
+        assertTrue(
+                ready.await(10, TimeUnit.SECONDS),
+                "Both requests must be ready"
+        );
+
+        start.countDown();
+
+        boolean firstResult =
+                first.get(20, TimeUnit.SECONDS);
+
+        boolean secondResult =
+                second.get(20, TimeUnit.SECONDS);
+
+        int successfulRequests =
+                (firstResult ? 1 : 0)
+                        + (secondResult ? 1 : 0);
+
+        assertEquals(
+                1,
+                successfulRequests,
+                "Only one request should create a challenge"
+        );
+
+        verify(sender, times(1)).sendCode(
+                eq(email),
+                anyString()
+        );
+
+        assertTrue(
+                challenges.existsActiveForUser(
+                        user.getUserId(),
+                        java.time.LocalDateTime.now(),
+                        5
+                )
+        );
+
+    } finally {
+        start.countDown();
+        executor.shutdownNow();
+    }
+}
+
 
     private ChallengeSetup createChallenge() {
 
