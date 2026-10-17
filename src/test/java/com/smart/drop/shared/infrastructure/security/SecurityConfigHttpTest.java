@@ -1,6 +1,7 @@
 
 package com.smart.drop.shared.infrastructure.security;
 
+import com.smart.drop.iam.domain.model.Role;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.JwtException;
 import java.util.Optional;
@@ -258,4 +259,101 @@ void invalidJwtMustNotGrantAccess()
             .andExpect(status().isUnauthorized());
         }
     }
+
+@Test
+void adminJwtCanListUsers() throws Exception {
+
+    User admin = User.createFromDatabase(
+            42,
+            "Administrator",
+            "admin@example.com",
+            "hashed-password",
+            new HashSet<>(java.util.Set.of(
+                    Role.createFromDatabase(
+                            1,
+                            "ROLE_ADMIN",
+                            "Administrador Global"
+                    )
+            )),
+            LocalDateTime.now(),
+            null,
+            false,
+            null
+    );
+
+    when(jwtService.verify("admin-test-token"))
+            .thenReturn(
+                    Jwts.claims()
+                            .subject("42")
+                            .build()
+            );
+
+    when(userRepository.findById(42))
+            .thenReturn(Optional.of(admin));
+
+    when(authService.getAllUsers())
+            .thenReturn(java.util.List.of());
+
+    for (String path : AUTH_PATHS) {
+
+        mockMvc.perform(
+                get(path + "/users")
+                        .header(
+                                "Authorization",
+                                "Bearer admin-test-token"
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(content().json("[]"));
+    }
+
+    verify(authService, times(3)).getAllUsers();
+}
+
+@Test
+void regularUserJwtCannotListUsers() throws Exception {
+
+    User regularUser = User.createFromDatabase(
+            43,
+            "Regular User",
+            "user@example.com",
+            "hashed-password",
+            new HashSet<>(java.util.Set.of(
+                    Role.createFromDatabase(
+                            2,
+                            "ROLE_USER",
+                            "Usuario Estandar"
+                    )
+            )),
+            LocalDateTime.now(),
+            null,
+            false,
+            null
+    );
+
+    when(jwtService.verify("user-test-token"))
+            .thenReturn(
+                    Jwts.claims()
+                            .subject("43")
+                            .build()
+            );
+
+    when(userRepository.findById(43))
+            .thenReturn(Optional.of(regularUser));
+
+    for (String path : AUTH_PATHS) {
+
+        mockMvc.perform(
+                get(path + "/users")
+                        .header(
+                                "Authorization",
+                                "Bearer user-test-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    verify(authService, never()).getAllUsers();
+}
+
 }

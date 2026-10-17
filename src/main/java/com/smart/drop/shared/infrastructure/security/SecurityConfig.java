@@ -51,6 +51,14 @@ public class SecurityConfig {
                     "/api/identity/auth/2fa/verify"
                 ).permitAll()
 
+                // Only administrators may list all users.
+                .requestMatchers(
+                    HttpMethod.GET,
+                    "/api/v1/iam/auth/users",
+                    "/api/iam/auth/users",
+                    "/api/identity/auth/users"
+                ).hasRole("ADMIN")
+
                 // All other routes stay blocked.
                 .anyRequest().denyAll()
             )
