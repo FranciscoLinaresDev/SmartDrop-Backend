@@ -7,6 +7,7 @@ import com.smart.drop.iam.infrastructure.persistence.jpa.repositories.TwoFactorC
 
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -62,8 +63,11 @@ class TwoFactorChallengeTransactionTest {
         return Base64.getEncoder().encodeToString(bytes);
     }
 
+    // TEST 1: Failed attempts must persist in the database.
+
     @Test
     void failedAttemptsShouldPersistAcrossTransactions() {
+
         var setup = createChallenge();
 
         String wrongCode = setup.code().equals("000000")
@@ -71,6 +75,7 @@ class TwoFactorChallengeTransactionTest {
                 : "000000";
 
         for (int attempt = 1; attempt <= 5; attempt++) {
+
             var result = service.verify(
                     setup.challengeId(),
                     wrongCode
@@ -96,8 +101,11 @@ class TwoFactorChallengeTransactionTest {
         );
     }
 
+    // TEST 2: A successful code can only be used once.
+
     @Test
     void successfulCodeShouldBeConsumedOnlyOnce() {
+
         var setup = createChallenge();
 
         var first = service.verify(
@@ -122,7 +130,88 @@ class TwoFactorChallengeTransactionTest {
         assertFalse(second.verified());
     }
 
+    // TEST 3: Reject a second challenge while one is active.
+
+    @Test
+    void shouldRejectDuplicateActiveChallenge() {
+
+        var setup = createChallenge();
+
+        String email = users.findById(setup.userId())
+                .orElseThrow()
+                .getEmail();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.createAfterPasswordVerified(
+                        setup.userId(),
+                        email
+                )
+        );
+
+        verify(sender, times(1)).sendCode(
+                eq(email),
+                anyString()
+        );
+    }
+
+    // TEST 4: Enforce cooldown after successful verification.
+
+    @Test
+    void shouldEnforceCooldownAfterSuccessfulVerification() {
+
+        var setup = createChallenge();
+
+        var result = service.verify(
+                setup.challengeId(),
+                setup.code()
+        );
+
+        assertTrue(result.verified());
+
+        String email = users.findById(setup.userId())
+                .orElseThrow()
+                .getEmail();
+
+        assertThrows(
+                IllegalStateException.class,
+                () -> service.createAfterPasswordVerified(
+                        setup.userId(),
+                        email
+                )
+        );
+
+        verify(sender, times(1)).sendCode(
+                eq(email),
+                anyString()
+        );
+    }
+
+    // TEST 5: Never send codes to an unauthorized email.
+
+    @Test
+    void shouldRejectSendingCodeToDifferentEmail() {
+
+        var setup = createChallenge();
+
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> service.createAfterPasswordVerified(
+                        setup.userId(),
+                        "attacker@example.com"
+                )
+        );
+
+        verify(sender, never()).sendCode(
+                eq("attacker@example.com"),
+                anyString()
+        );
+    }
+
+    // HELPER: Create a real challenge in the H2 database.
+
     private ChallengeSetup createChallenge() {
+
         String email = "test-"
                 + UUID.randomUUID()
                 + "@example.com";
@@ -165,6 +254,8 @@ class TwoFactorChallengeTransactionTest {
     ) {
     }
 
+    // TEST CONFIGURATION: Real JPA, mocked email delivery.
+
     @TestConfiguration(proxyBeanMethods = false)
     static class TestConfig {
 
@@ -178,24 +269,22 @@ class TwoFactorChallengeTransactionTest {
             return new TwoFactorCodeHasher(randomSecret());
         }
 
+        @Bean
+        TwoFactorChallengeService testChallengeService(
+                TwoFactorChallengeJpaRepository repository,
+                UserJpaRepository userRepository,
+                TwoFactorCodeGenerator generator,
+                TwoFactorCodeHasher hasher,
+                TwoFactorCodeSender sender) {
 
-@Bean
-TwoFactorChallengeService testChallengeService(
-        TwoFactorChallengeJpaRepository repository,
-        UserJpaRepository userRepository,
-        TwoFactorCodeGenerator generator,
-        TwoFactorCodeHasher hasher,
-        TwoFactorCodeSender sender) {
-
-    return new TwoFactorChallengeService(
-            repository,
-            userRepository,
-            generator,
-            hasher,
-            sender,
-            Clock.systemUTC()
-    );
-}
-
+            return new TwoFactorChallengeService(
+                    repository,
+                    userRepository,
+                    generator,
+                    hasher,
+                    sender,
+                    Clock.systemUTC()
+            );
+        }
     }
 }
