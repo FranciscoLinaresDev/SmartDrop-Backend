@@ -59,6 +59,20 @@ public class SecurityConfig {
                     "/api/identity/auth/users"
                 ).hasRole("ADMIN")
 
+
+.requestMatchers(
+    HttpMethod.POST,
+
+    "/api/v1/iam/auth/assign-role",
+    "/api/iam/auth/assign-role",
+    "/api/identity/auth/assign-role",
+
+    "/api/v1/iam/auth/revoke-role",
+    "/api/iam/auth/revoke-role",
+    "/api/identity/auth/revoke-role"
+).hasRole("ADMIN")
+
+
                 // All other routes stay blocked.
                 .anyRequest().denyAll()
             )

@@ -356,4 +356,176 @@ void regularUserJwtCannotListUsers() throws Exception {
     verify(authService, never()).getAllUsers();
 }
 
+
+@Test
+void regularUserCannotAssignOrRevokeRoles()
+        throws Exception {
+
+    User regularUser = User.createFromDatabase(
+            43,
+            "Regular User",
+            "user@example.com",
+            "hashed-password",
+            new HashSet<>(java.util.Set.of(
+                    Role.createFromDatabase(
+                            2,
+                            "ROLE_USER",
+                            "Usuario Estandar"
+                    )
+            )),
+            LocalDateTime.now(),
+            null,
+            false,
+            null
+    );
+
+    when(jwtService.verify("regular-role-token"))
+            .thenReturn(
+                    Jwts.claims()
+                            .subject("43")
+                            .build()
+            );
+
+    when(userRepository.findById(43))
+            .thenReturn(Optional.of(regularUser));
+
+    for (String path : AUTH_PATHS) {
+
+        mockMvc.perform(
+                post(path + "/assign-role")
+                        .header(
+                                "Authorization",
+                                "Bearer regular-role-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "userId": 45,
+                              "roleName": "ROLE_ADMIN"
+                            }
+                            """)
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                post(path + "/revoke-role")
+                        .header(
+                                "Authorization",
+                                "Bearer regular-role-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "userId": 45,
+                              "roleName": "ROLE_USER"
+                            }
+                            """)
+        )
+        .andExpect(status().isForbidden());
+    }
+
+    verify(authService, never())
+            .assignRoleToUser(anyInt(), anyString());
+
+    verify(authService, never())
+            .revokeRoleFromUser(anyInt(), anyString());
+}
+
+@Test
+void administratorCanManageRoles()
+        throws Exception {
+
+    User admin = User.createFromDatabase(
+            42,
+            "Administrator",
+            "admin@example.com",
+            "hashed-password",
+            new HashSet<>(java.util.Set.of(
+                    Role.createFromDatabase(
+                            1,
+                            "ROLE_ADMIN",
+                            "Administrador"
+                    )
+            )),
+            LocalDateTime.now(),
+            null,
+            false,
+            null
+    );
+
+    User targetUser = User.createFromDatabase(
+            45,
+            "Target User",
+            "target@example.com",
+            "hashed-password",
+            new HashSet<>(),
+            LocalDateTime.now(),
+            null,
+            false,
+            null
+    );
+
+    when(jwtService.verify("admin-role-token"))
+            .thenReturn(
+                    Jwts.claims()
+                            .subject("42")
+                            .build()
+            );
+
+    when(userRepository.findById(42))
+            .thenReturn(Optional.of(admin));
+
+    when(authService.assignRoleToUser(
+            45,
+            "ROLE_USER"
+    )).thenReturn(targetUser);
+
+    when(authService.revokeRoleFromUser(
+            45,
+            "ROLE_USER"
+    )).thenReturn(targetUser);
+
+    for (String path : AUTH_PATHS) {
+
+        mockMvc.perform(
+                post(path + "/assign-role")
+                        .header(
+                                "Authorization",
+                                "Bearer admin-role-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "userId": 45,
+                              "roleName": "ROLE_USER"
+                            }
+                            """)
+        )
+        .andExpect(status().isOk());
+
+        mockMvc.perform(
+                post(path + "/revoke-role")
+                        .header(
+                                "Authorization",
+                                "Bearer admin-role-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                            {
+                              "userId": 45,
+                              "roleName": "ROLE_USER"
+                            }
+                            """)
+        )
+        .andExpect(status().isOk());
+    }
+
+    verify(authService, times(3))
+            .assignRoleToUser(45, "ROLE_USER");
+
+    verify(authService, times(3))
+            .revokeRoleFromUser(45, "ROLE_USER");
+}
+
+
 }
