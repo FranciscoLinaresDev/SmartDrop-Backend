@@ -294,16 +294,6 @@ void otherTankOperationsMustRemainBlocked()
     .andExpect(status().isForbidden());
 
     // Updating tanks remains blocked.
-    mockMvc.perform(
-            put(BASE + "/10")
-                    .header(
-                            "Authorization",
-                            "Bearer authenticated-token"
-                    )
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{}")
-    )
-    .andExpect(status().isForbidden());
 
     // Replenishing tanks remains blocked.
     mockMvc.perform(
@@ -402,6 +392,196 @@ void invalidTankCreationDataMustReturnBadRequest()
     // Invalid requests must never reach the service.
     verifyNoInteractions(tankService);
 }
+
+@Test
+void ownerCanUpdateOwnTank() throws Exception {
+
+    mockAuthentication(
+            "update-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    Tank updated = new Tank(
+            10,
+            42,
+            "Tanque Actualizado",
+            1500,
+            700
+    );
+
+    when(tankService.updateTankForUser(
+            10, 42, "Tanque Actualizado", 1500, 700
+    )).thenReturn(Optional.of(updated));
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer update-owner-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "name": "Tanque Actualizado",
+                          "capacity": 1500,
+                          "current": 700
+                        }
+                        """)
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.tankId").value(10))
+    .andExpect(jsonPath("$.userId").value(42))
+    .andExpect(jsonPath("$.capacity").value(1500));
+
+    verify(tankService).updateTankForUser(
+            10, 42, "Tanque Actualizado", 1500, 700
+    );
+}
+
+@Test
+void userCannotUpdateAnotherUsersTank() throws Exception {
+
+    mockAuthentication(
+            "update-foreign-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.updateTankForUser(
+            10, 42, "Intento Indebido", 1000, 500
+    )).thenReturn(Optional.empty());
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer update-foreign-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "name": "Intento Indebido",
+                          "capacity": 1000,
+                          "current": 500
+                        }
+                        """)
+    )
+    .andExpect(status().isNotFound());
+
+    verify(tankService).updateTankForUser(
+            10, 42, "Intento Indebido", 1000, 500
+    );
+}
+
+@Test
+void invalidTankUpdateMustReturnBadRequest() throws Exception {
+
+    mockAuthentication(
+            "invalid-update-token",
+            42,
+            "ROLE_USER"
+    );
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer invalid-update-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "name": "Tanque",
+                          "capacity": -100,
+                          "current": 500
+                        }
+                        """)
+    )
+    .andExpect(status().isBadRequest());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void unauthenticatedUserCannotUpdateTank() throws Exception {
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "name": "Tanque",
+                          "capacity": 1000,
+                          "current": 500
+                        }
+                        """)
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotUpdateTank() throws Exception {
+
+    mockAuthentication(
+            "roleless-update-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer roleless-update-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "name": "Tanque",
+                          "capacity": 1000,
+                          "current": 500
+                        }
+                        """)
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void nonexistentTankCannotBeUpdatedThroughHttp() throws Exception {
+
+    mockAuthentication(
+            "missing-update-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.updateTankForUser(
+            999, 42, "Tanque", 1000, 500
+    )).thenReturn(Optional.empty());
+
+    mockMvc.perform(
+            put(BASE + "/999")
+                    .header(
+                            "Authorization",
+                            "Bearer missing-update-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "name": "Tanque",
+                          "capacity": 1000,
+                          "current": 500
+                        }
+                        """)
+    )
+    .andExpect(status().isNotFound());
+}
+
 
 
     private void mockAuthentication(

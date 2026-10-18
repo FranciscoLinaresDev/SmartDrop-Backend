@@ -77,6 +77,38 @@ public class TankService {
         return tankRepository.findAll();
     }
 
+
+public Optional<Tank> updateTankForUser(
+        Integer tankId,
+        Integer authenticatedUserId,
+        String name,
+        Integer capacity,
+        Integer current) {
+
+    if (authenticatedUserId == null
+            || authenticatedUserId <= 0) {
+        throw new IllegalArgumentException(
+                "Invalid authenticated user"
+        );
+    }
+
+    return tankRepository.findById(tankId)
+            .filter(existing ->
+                    authenticatedUserId.equals(existing.userId())
+            )
+            .map(existing -> {
+                Tank updated = new Tank(
+                        existing.tankId(),
+                        existing.userId(),
+                        name,
+                        capacity,
+                        current
+                );
+
+                return tankRepository.save(updated);
+            });
+}
+
     // Update an existing tank.
     public Tank updateTank(
             Integer tankId,

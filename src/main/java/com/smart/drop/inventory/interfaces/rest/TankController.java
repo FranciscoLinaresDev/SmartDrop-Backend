@@ -31,7 +31,6 @@ public class TankController {
         this.tankService = tankService;
     }
 
-    // CREATE: Owner is always obtained from authentication.
     @PostMapping
     public ResponseEntity<TankResponse> create(
             @RequestBody CreateTankRequest request,
@@ -40,14 +39,10 @@ public class TankController {
         Integer authenticatedUserId =
                 getAuthenticatedUserId(authentication);
 
-        if (request == null
-                || request.name() == null
-                || request.name().isBlank()
-                || request.capacity() == null
-                || request.capacity() <= 0
-                || (request.current() != null
-                    && (request.current() < 0
-                        || request.current() > request.capacity()))) {
+        if (isInvalidTankData(
+                request.name(),
+                request.capacity(),
+                request.current())) {
 
             return ResponseEntity.badRequest().build();
         }
@@ -64,7 +59,6 @@ public class TankController {
                 .body(toResponse(created));
     }
 
-    // READ: Only return tanks owned by the authenticated user.
     @GetMapping("/{tankId}")
     public ResponseEntity<TankResponse> getById(
             @PathVariable Integer tankId,
@@ -79,7 +73,6 @@ public class TankController {
                 .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // Currently blocked by SecurityConfig.
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<TankResponse>> getByUserId(
             @PathVariable Integer userId) {
@@ -93,7 +86,6 @@ public class TankController {
         return ResponseEntity.ok(data);
     }
 
-    // Currently blocked by SecurityConfig.
     @GetMapping
     public ResponseEntity<List<TankResponse>> getAll() {
 
@@ -106,23 +98,36 @@ public class TankController {
         return ResponseEntity.ok(data);
     }
 
-    // Currently blocked by SecurityConfig.
+    // Secure update: ownership is verified by TankService.
     @PutMapping("/{tankId}")
     public ResponseEntity<TankResponse> update(
             @PathVariable Integer tankId,
-            @RequestBody UpdateTankRequest request) {
+            @RequestBody UpdateTankRequest request,
+            Authentication authentication) {
 
-        Tank updated = tankService.updateTank(
-                tankId,
+        Integer authenticatedUserId =
+                getAuthenticatedUserId(authentication);
+
+        if (isInvalidTankData(
                 request.name(),
                 request.capacity(),
-                request.current()
-        );
+                request.current())) {
 
-        return ResponseEntity.ok(toResponse(updated));
+            return ResponseEntity.badRequest().build();
+        }
+
+        return tankService.updateTankForUser(
+                        tankId,
+                        authenticatedUserId,
+                        request.name(),
+                        request.capacity(),
+                        request.current()
+                )
+                .map(tank -> ResponseEntity.ok(toResponse(tank)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
-    // Currently blocked by SecurityConfig.
+    // Still blocked by SecurityConfig.
     @PutMapping("/{tankId}/replenish")
     public ResponseEntity<TankResponse> replenish(
             @PathVariable Integer tankId) {
@@ -132,7 +137,7 @@ public class TankController {
         return ResponseEntity.ok(toResponse(updated));
     }
 
-    // Currently blocked by SecurityConfig.
+    // Still blocked by SecurityConfig.
     @DeleteMapping("/{tankId}")
     public ResponseEntity<Void> delete(
             @PathVariable Integer tankId) {
@@ -140,6 +145,19 @@ public class TankController {
         tankService.deleteById(tankId);
 
         return ResponseEntity.noContent().build();
+    }
+
+    private boolean isInvalidTankData(
+            String name,
+            Integer capacity,
+            Integer current) {
+
+        return name == null
+                || name.isBlank()
+                || capacity == null
+                || capacity <= 0
+                || (current != null
+                    && (current < 0 || current > capacity));
     }
 
     private Integer getAuthenticatedUserId(
