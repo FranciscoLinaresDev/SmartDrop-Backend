@@ -1,5 +1,6 @@
 package com.smart.drop.iam.application.services;
 
+import com.smart.drop.iam.domain.model.repositories.AdminRoleGuard;
 import com.smart.drop.iam.domain.model.User;
 import com.smart.drop.iam.domain.model.Role;
 import com.smart.drop.iam.domain.model.repositories.UserRepository;
@@ -22,19 +23,24 @@ import java.util.UUID;
 @Transactional
 public class AuthService {
 
+    private final AdminRoleGuard adminRoleGuard;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final PasswordEncoder passwordEncoder;
 
-    public AuthService(
-            UserRepository userRepository,
-            RoleRepository roleRepository,
-            PasswordEncoder passwordEncoder) {
 
-        this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
-        this.passwordEncoder = passwordEncoder;
-    }
+public AuthService(
+        UserRepository userRepository,
+        RoleRepository roleRepository,
+        PasswordEncoder passwordEncoder,
+        AdminRoleGuard adminRoleGuard) {
+
+    this.userRepository = userRepository;
+    this.roleRepository = roleRepository;
+    this.passwordEncoder = passwordEncoder;
+    this.adminRoleGuard = adminRoleGuard;
+}
+
 
 
     /**
@@ -227,26 +233,39 @@ public class AuthService {
      * @param roleName el nombre del rol
      * @return el usuario actualizado sin el rol
      */
-    public User revokeRoleFromUser(Integer userId, String roleName) {
-        // Obtiene el usuario
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> UserNotFoundException.withId(userId));
 
-        // Obtiene el rol
-        Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> RoleNotFoundException.withName(roleName));
+public User revokeRoleFromUser(
+        Integer userId,
+        String roleName) {
 
-        // Valida que el usuario tenga ese rol
-        if (!user.hasRole(roleName)) {
-            throw new IllegalArgumentException("User does not have role: " + roleName);
-        }
+    User user = userRepository.findById(userId)
+            .orElseThrow(
+                    () -> UserNotFoundException.withId(userId)
+            );
 
-        // Revoca el rol
-        user.removeRole(role);
+    Role role = roleRepository.findByName(roleName)
+            .orElseThrow(
+                    () -> RoleNotFoundException.withName(roleName)
+            );
 
-        // Persiste
-        return userRepository.update(user);
+    if (!user.hasRole(role.getName())) {
+        throw new IllegalArgumentException(
+                "User does not have role: " + roleName
+        );
     }
+
+    if ("ROLE_ADMIN".equalsIgnoreCase(role.getName())) {
+
+        // Locks the shared ADMIN role and its holders.
+        // Must remain in the same transaction as update().
+        adminRoleGuard.assertCanRemoveAdminRole(role.getId());
+    }
+
+    user.removeRole(role);
+
+    return userRepository.update(user);
+}
+
 
     /**
      * Verifica si un usuario tiene un rol específico.

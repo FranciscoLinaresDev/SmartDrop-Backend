@@ -2,6 +2,7 @@
 package com.smart.drop.iam.application.services;
 
 import com.smart.drop.iam.domain.model.User;
+import com.smart.drop.iam.domain.model.repositories.AdminRoleGuard;
 import com.smart.drop.iam.domain.model.repositories.UserRepository;
 import com.smart.drop.iam.domain.model.repositories.RoleRepository;
 
@@ -25,6 +26,9 @@ class AuthServicePasswordSecurityTest {
     private final RoleRepository roleRepository =
             mock(RoleRepository.class);
 
+    private final AdminRoleGuard adminRoleGuard =
+            mock(AdminRoleGuard.class);
+
     private final PasswordEncoder encoder =
             new BCryptPasswordEncoder(12);
 
@@ -32,14 +36,17 @@ class AuthServicePasswordSecurityTest {
             new AuthService(
                     userRepository,
                     roleRepository,
-                    encoder
+                    encoder,
+                    adminRoleGuard
             );
 
     @Test
     void registerShouldHashPassword() {
 
         when(userRepository.save(any(User.class)))
-                .thenAnswer(invocation -> invocation.getArgument(0));
+                .thenAnswer(invocation ->
+                        invocation.getArgument(0)
+                );
 
         User user = authService.registerUser(
                 "Test User",
@@ -47,12 +54,17 @@ class AuthServicePasswordSecurityTest {
                 "Password123!"
         );
 
-        assertNotEquals("Password123!", user.getPasswordHash());
-
-        assertTrue(encoder.matches(
+        assertNotEquals(
                 "Password123!",
                 user.getPasswordHash()
-        ));
+        );
+
+        assertTrue(
+                encoder.matches(
+                        "Password123!",
+                        user.getPasswordHash()
+                )
+        );
     }
 
     @Test
@@ -107,10 +119,12 @@ class AuthServicePasswordSecurityTest {
                 user.getPasswordHash()
         );
 
-        assertTrue(encoder.matches(
-                "NewPassword123!",
-                user.getPasswordHash()
-        ));
+        assertTrue(
+                encoder.matches(
+                        "NewPassword123!",
+                        user.getPasswordHash()
+                )
+        );
 
         verify(userRepository).update(user);
     }
