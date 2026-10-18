@@ -55,6 +55,67 @@ class TankSecurityHttpTest {
     @MockitoBean(name = "jpaMappingContext")
     private JpaMetamodelMappingContext jpaMappingContext;
 
+
+@Test
+void userCannotCreateTankForAnotherAccount()
+        throws Exception {
+
+    mockAuthentication(
+            "owner-create-token",
+            42,
+            "ROLE_USER"
+    );
+
+    Tank created = new Tank(
+            25,
+            42,
+            "Mi Cisterna",
+            1000,
+            500
+    );
+
+    when(tankService.createTank(
+            42,
+            "Mi Cisterna",
+            1000,
+            500
+    )).thenReturn(created);
+
+    mockMvc.perform(
+            post(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer owner-create-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("""
+                        {
+                          "userId": 999,
+                          "name": "Mi Cisterna",
+                          "capacity": 1000,
+                          "current": 500
+                        }
+                        """)
+    )
+    .andExpect(status().isCreated())
+    .andExpect(jsonPath("$.userId").value(42));
+
+    verify(tankService).createTank(
+            42,
+            "Mi Cisterna",
+            1000,
+            500
+    );
+
+    verify(tankService, never()).createTank(
+            eq(999),
+            anyString(),
+            anyInt(),
+            anyInt()
+    );
+}
+
+
     @Test
     void ownerCanReadOwnTank() throws Exception {
 
@@ -201,80 +262,72 @@ class TankSecurityHttpTest {
         verify(tankService).getByIdForUser(10, 1);
     }
 
-    @Test
-    void otherTankOperationsMustRemainBlocked()
-            throws Exception {
 
-        mockAuthentication(
-                "authenticated-token",
-                42,
-                "ROLE_USER"
-        );
+@Test
+void otherTankOperationsMustRemainBlocked()
+        throws Exception {
 
-        mockMvc.perform(
-                get(BASE)
-                        .header(
-                                "Authorization",
-                                "Bearer authenticated-token"
-                        )
-        )
-        .andExpect(status().isForbidden());
+    mockAuthentication(
+            "authenticated-token",
+            42,
+            "ROLE_USER"
+    );
 
-        mockMvc.perform(
-                get(BASE + "/user/42")
-                        .header(
-                                "Authorization",
-                                "Bearer authenticated-token"
-                        )
-        )
-        .andExpect(status().isForbidden());
+    // Listing all tanks must remain blocked.
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer authenticated-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
 
-        mockMvc.perform(
-                post(BASE)
-                        .header(
-                                "Authorization",
-                                "Bearer authenticated-token"
-                        )
-                        .contentType(
-                                MediaType.APPLICATION_JSON
-                        )
-                        .content("{}")
-        )
-        .andExpect(status().isForbidden());
+    // Listing tanks by an arbitrary user ID remains blocked.
+    mockMvc.perform(
+            get(BASE + "/user/42")
+                    .header(
+                            "Authorization",
+                            "Bearer authenticated-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
 
-        mockMvc.perform(
-                put(BASE + "/10")
-                        .header(
-                                "Authorization",
-                                "Bearer authenticated-token"
-                        )
-                        .contentType(
-                                MediaType.APPLICATION_JSON
-                        )
-                        .content("{}")
-        )
-        .andExpect(status().isForbidden());
+    // Updating tanks remains blocked.
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer authenticated-token"
+                    )
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .content("{}")
+    )
+    .andExpect(status().isForbidden());
 
-        mockMvc.perform(
-                put(BASE + "/10/replenish")
-                        .header(
-                                "Authorization",
-                                "Bearer authenticated-token"
-                        )
-        )
-        .andExpect(status().isForbidden());
+    // Replenishing tanks remains blocked.
+    mockMvc.perform(
+            put(BASE + "/10/replenish")
+                    .header(
+                            "Authorization",
+                            "Bearer authenticated-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
 
-        mockMvc.perform(
-                delete(BASE + "/10")
-                        .header(
-                                "Authorization",
-                                "Bearer authenticated-token"
-                        )
-        )
-        .andExpect(status().isForbidden());
+    // Deleting tanks remains blocked.
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer authenticated-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
 
-        verifyNoInteractions(tankService);
-    }
+    verifyNoInteractions(tankService);
+}
+
 
     private void mockAuthentication(
             String token,

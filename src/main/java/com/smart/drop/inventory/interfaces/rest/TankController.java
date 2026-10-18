@@ -31,20 +31,27 @@ public class TankController {
         this.tankService = tankService;
     }
 
-    @PostMapping
-    public ResponseEntity<TankResponse> create(
-            @RequestBody CreateTankRequest request) {
 
-        Tank created = tankService.createTank(
-                request.userId(),
-                request.name(),
-                request.capacity(),
-                request.current()
-        );
+@PostMapping
+public ResponseEntity<TankResponse> create(
+        @RequestBody CreateTankRequest request,
+        Authentication authentication) {
 
-        return ResponseEntity.status(HttpStatus.CREATED)
-                .body(toResponse(created));
-    }
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    Tank created = tankService.createTank(
+            authenticatedUserId,
+            request.name(),
+            request.capacity(),
+            request.current()
+    );
+
+    return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(toResponse(created));
+}
+
 
     @GetMapping("/{tankId}")
     public ResponseEntity<TankResponse> getById(

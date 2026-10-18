@@ -79,6 +79,11 @@ public class SecurityConfig {
     "/api/v1/inventory/tanks/{tankId}"
 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+.requestMatchers(
+    HttpMethod.POST,
+    "/api/v1/inventory/tanks"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
 
                 // All other routes stay blocked.
                 .anyRequest().denyAll()
