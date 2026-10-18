@@ -1,4 +1,3 @@
-
 package com.smart.drop.inventory.interfaces.rest;
 
 import com.smart.drop.iam.domain.model.Role;
@@ -293,18 +292,6 @@ void otherTankOperationsMustRemainBlocked()
     )
     .andExpect(status().isForbidden());
 
-    // Updating tanks remains blocked.
-
-    // Replenishing tanks remains blocked.
-    mockMvc.perform(
-            put(BASE + "/10/replenish")
-                    .header(
-                            "Authorization",
-                            "Bearer authenticated-token"
-                    )
-    )
-    .andExpect(status().isForbidden());
-
     // Deleting tanks remains blocked.
     mockMvc.perform(
             delete(BASE + "/10")
@@ -580,6 +567,149 @@ void nonexistentTankCannotBeUpdatedThroughHttp() throws Exception {
                         """)
     )
     .andExpect(status().isNotFound());
+}
+
+
+@Test
+void ownerCanReplenishOwnTankThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "replenish-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    Tank replenished = new Tank(
+            10,
+            42,
+            "Mi Cisterna",
+            1000,
+            1000
+    );
+
+    when(tankService.replenishForUser(10, 42))
+            .thenReturn(Optional.of(replenished));
+
+    mockMvc.perform(
+            put(BASE + "/10/replenish")
+                    .header(
+                            "Authorization",
+                            "Bearer replenish-owner-token"
+                    )
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.tankId").value(10))
+    .andExpect(jsonPath("$.userId").value(42))
+    .andExpect(jsonPath("$.capacity").value(1000))
+    .andExpect(jsonPath("$.current").value(1000));
+
+    verify(tankService).replenishForUser(10, 42);
+}
+
+@Test
+void userCannotReplenishAnotherUsersTankThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "replenish-foreign-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.replenishForUser(10, 42))
+            .thenReturn(Optional.empty());
+
+    mockMvc.perform(
+            put(BASE + "/10/replenish")
+                    .header(
+                            "Authorization",
+                            "Bearer replenish-foreign-token"
+                    )
+    )
+    .andExpect(status().isNotFound());
+
+    verify(tankService).replenishForUser(10, 42);
+}
+
+@Test
+void nonexistentTankCannotBeReplenishedThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "replenish-missing-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.replenishForUser(999, 42))
+            .thenReturn(Optional.empty());
+
+    mockMvc.perform(
+            put(BASE + "/999/replenish")
+                    .header(
+                            "Authorization",
+                            "Bearer replenish-missing-token"
+                    )
+    )
+    .andExpect(status().isNotFound());
+
+    verify(tankService).replenishForUser(999, 42);
+}
+
+@Test
+void unauthenticatedUserCannotReplenishTank()
+        throws Exception {
+
+    mockMvc.perform(
+            put(BASE + "/10/replenish")
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotReplenishTank()
+        throws Exception {
+
+    mockAuthentication(
+            "replenish-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            put(BASE + "/10/replenish")
+                    .header(
+                            "Authorization",
+                            "Bearer replenish-roleless-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void invalidJwtCannotReplenishTank()
+        throws Exception {
+
+    when(jwtService.verify("invalid-replenish-token"))
+            .thenThrow(
+                    new JwtException("Invalid JWT")
+            );
+
+    mockMvc.perform(
+            put(BASE + "/10/replenish")
+                    .header(
+                            "Authorization",
+                            "Bearer invalid-replenish-token"
+                    )
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(tankService);
 }
 
 

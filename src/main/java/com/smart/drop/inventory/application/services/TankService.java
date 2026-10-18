@@ -134,6 +134,36 @@ public Optional<Tank> updateTankForUser(
         return tankRepository.save(updated);
     }
 
+
+public Optional<Tank> replenishForUser(
+        Integer tankId,
+        Integer authenticatedUserId) {
+
+    if (authenticatedUserId == null
+            || authenticatedUserId <= 0) {
+        throw new IllegalArgumentException(
+                "Invalid authenticated user"
+        );
+    }
+
+    return tankRepository.findById(tankId)
+            .filter(existing ->
+                    authenticatedUserId.equals(existing.userId())
+            )
+            .map(existing -> {
+
+                Tank replenished = new Tank(
+                        existing.tankId(),
+                        existing.userId(),
+                        existing.name(),
+                        existing.capacity(),
+                        existing.capacity()
+                );
+
+                return tankRepository.save(replenished);
+            });
+}
+
     // Replenish a tank to its maximum capacity.
     public Tank replenish(Integer tankId) {
 

@@ -38,7 +38,7 @@ public class SecurityConfig {
 
             .authorizeHttpRequests(auth -> auth
 
-                // Only authentication entry points are public.
+                // Public authentication endpoints.
                 .requestMatchers(
                     HttpMethod.POST,
 
@@ -51,45 +51,54 @@ public class SecurityConfig {
                     "/api/identity/auth/2fa/verify"
                 ).permitAll()
 
-                // Only administrators may list all users.
+                // Only administrators can list all users.
                 .requestMatchers(
                     HttpMethod.GET,
+
                     "/api/v1/iam/auth/users",
                     "/api/iam/auth/users",
                     "/api/identity/auth/users"
                 ).hasRole("ADMIN")
 
+                // Only administrators can manage roles.
+                .requestMatchers(
+                    HttpMethod.POST,
 
-.requestMatchers(
-    HttpMethod.POST,
+                    "/api/v1/iam/auth/assign-role",
+                    "/api/iam/auth/assign-role",
+                    "/api/identity/auth/assign-role",
 
-    "/api/v1/iam/auth/assign-role",
-    "/api/iam/auth/assign-role",
-    "/api/identity/auth/assign-role",
+                    "/api/v1/iam/auth/revoke-role",
+                    "/api/iam/auth/revoke-role",
+                    "/api/identity/auth/revoke-role"
+                ).hasRole("ADMIN")
 
-    "/api/v1/iam/auth/revoke-role",
-    "/api/iam/auth/revoke-role",
-    "/api/identity/auth/revoke-role"
-).hasRole("ADMIN")
+                // Read an individual tank.
+                // Ownership is checked by TankService.
+                .requestMatchers(
+                    HttpMethod.GET,
+                    "/api/v1/inventory/tanks/{tankId}"
+                ).hasAnyRole("USER", "BREWER", "ADMIN")
 
-// Authenticated users may request individual tanks.
-// Ownership is checked by TankService.
-.requestMatchers(
-    HttpMethod.GET,
-    "/api/v1/inventory/tanks/{tankId}"
-).hasAnyRole("USER", "BREWER", "ADMIN")
+                // Create a tank for the authenticated user.
+                .requestMatchers(
+                    HttpMethod.POST,
+                    "/api/v1/inventory/tanks"
+                ).hasAnyRole("USER", "BREWER", "ADMIN")
 
-.requestMatchers(
-    HttpMethod.POST,
-    "/api/v1/inventory/tanks"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-.requestMatchers(
-    HttpMethod.PUT,
-    "/api/v1/inventory/tanks/{tankId}"
-).hasAnyRole("USER", "BREWER", "ADMIN")
+                // Update a tank owned by the authenticated user.
+                .requestMatchers(
+                    HttpMethod.PUT,
+                    "/api/v1/inventory/tanks/{tankId}"
+                ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+                // Replenish a tank owned by the authenticated user.
+                .requestMatchers(
+                    HttpMethod.PUT,
+                    "/api/v1/inventory/tanks/{tankId}/replenish"
+                ).hasAnyRole("USER", "BREWER", "ADMIN")
 
-                // All other routes stay blocked.
+                // Block all other routes by default.
                 .anyRequest().denyAll()
             )
 

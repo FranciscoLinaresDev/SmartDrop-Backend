@@ -128,14 +128,25 @@ public class TankController {
     }
 
     // Still blocked by SecurityConfig.
-    @PutMapping("/{tankId}/replenish")
-    public ResponseEntity<TankResponse> replenish(
-            @PathVariable Integer tankId) {
 
-        Tank updated = tankService.replenish(tankId);
+@PutMapping("/{tankId}/replenish")
+public ResponseEntity<TankResponse> replenish(
+        @PathVariable Integer tankId,
+        Authentication authentication) {
 
-        return ResponseEntity.ok(toResponse(updated));
-    }
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    return tankService.replenishForUser(
+                    tankId,
+                    authenticatedUserId
+            )
+            .map(tank -> ResponseEntity.ok(toResponse(tank)))
+            .orElseGet(() ->
+                    ResponseEntity.notFound().build()
+            );
+}
+
 
     // Still blocked by SecurityConfig.
     @DeleteMapping("/{tankId}")
