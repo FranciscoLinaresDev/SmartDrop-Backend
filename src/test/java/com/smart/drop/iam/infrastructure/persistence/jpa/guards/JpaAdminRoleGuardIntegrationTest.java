@@ -1,6 +1,12 @@
 
 package com.smart.drop.iam.infrastructure.persistence.jpa.guards;
 
+import java.util.concurrent.Callable;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import com.smart.drop.iam.application.services.AuthService;
 import com.smart.drop.iam.infrastructure.persistence.jpa.entities.RoleEntity;
 import com.smart.drop.iam.infrastructure.persistence.jpa.entities.UserEntity;
@@ -162,4 +168,121 @@ class JpaAdminRoleGuardIntegrationTest {
 
         return users.saveAndFlush(user);
     }
+
+@Test
+void concurrentRevocationsMustPreserveOneAdministrator()
+        throws Exception {
+
+    RoleEntity adminRole = createAdminRole();
+
+    Integer firstId = createAdmin(
+            "concurrent-admin-1@example.com",
+            adminRole
+    ).getUserId();
+
+    Integer secondId = createAdmin(
+            "concurrent-admin-2@example.com",
+            adminRole
+    ).getUserId();
+
+    CountDownLatch ready = new CountDownLatch(2);
+    CountDownLatch start = new CountDownLatch(1);
+
+    ExecutorService executor =
+            Executors.newFixedThreadPool(2);
+
+    Callable<Boolean> firstRequest =
+            () -> attemptAdminRevocation(
+                    firstId, ready, start
+            );
+
+    Callable<Boolean> secondRequest =
+            () -> attemptAdminRevocation(
+                    secondId, ready, start
+            );
+
+    try {
+        Future<Boolean> first =
+                executor.submit(firstRequest);
+
+        Future<Boolean> second =
+                executor.submit(secondRequest);
+
+        assertTrue(
+                ready.await(15, TimeUnit.SECONDS),
+                "Both requests must be ready"
+        );
+
+        start.countDown();
+
+        boolean firstSucceeded =
+                first.get(30, TimeUnit.SECONDS);
+
+        boolean secondSucceeded =
+                second.get(30, TimeUnit.SECONDS);
+
+        int successfulRevocations =
+                (firstSucceeded ? 1 : 0)
+                + (secondSucceeded ? 1 : 0);
+
+        assertEquals(
+                1,
+                successfulRevocations,
+                "Exactly one administrator may lose the role"
+        );
+
+    } finally {
+        start.countDown();
+        executor.shutdownNow();
+    }
+
+    long remainingAdministrators = users.findAll()
+            .stream()
+            .filter(user -> user.getRoles()
+                    .stream()
+                    .anyMatch(role ->
+                            "ROLE_ADMIN".equals(role.getName())
+                    )
+            )
+            .count();
+
+    assertEquals(
+            1,
+            remainingAdministrators,
+            "The system must retain one administrator"
+    );
+}
+
+private boolean attemptAdminRevocation(
+        Integer userId,
+        CountDownLatch ready,
+        CountDownLatch start) throws InterruptedException {
+
+    ready.countDown();
+
+    if (!start.await(15, TimeUnit.SECONDS)) {
+        throw new IllegalStateException(
+                "Concurrent test start timed out"
+        );
+    }
+
+    try {
+        authService.revokeRoleFromUser(
+                userId,
+                "ROLE_ADMIN"
+        );
+
+        return true;
+
+    } catch (IllegalStateException exception) {
+
+        if ("Cannot remove the last system administrator"
+                .equals(exception.getMessage())) {
+            return false;
+        }
+
+        throw exception;
+    }
+}
+
 }
