@@ -72,6 +72,13 @@ public class SecurityConfig {
     "/api/identity/auth/revoke-role"
 ).hasRole("ADMIN")
 
+// Authenticated users may request individual tanks.
+// Ownership is checked by TankService.
+.requestMatchers(
+    HttpMethod.GET,
+    "/api/v1/inventory/tanks/{tankId}"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
 
                 // All other routes stay blocked.
                 .anyRequest().denyAll()

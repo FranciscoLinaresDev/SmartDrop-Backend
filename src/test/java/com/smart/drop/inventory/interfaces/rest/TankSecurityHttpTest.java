@@ -1,0 +1,319 @@
+
+package com.smart.drop.inventory.interfaces.rest;
+
+import com.smart.drop.iam.domain.model.Role;
+import com.smart.drop.iam.domain.model.User;
+import com.smart.drop.iam.domain.model.repositories.UserRepository;
+import com.smart.drop.inventory.application.services.TankService;
+import com.smart.drop.inventory.domain.model.entities.Tank;
+import com.smart.drop.shared.infrastructure.security.JwtService;
+import com.smart.drop.shared.infrastructure.security.SecurityConfig;
+
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+
+import org.junit.jupiter.api.Test;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
+import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(TankController.class)
+@Import(SecurityConfig.class)
+class TankSecurityHttpTest {
+
+    private static final String BASE =
+            "/api/v1/inventory/tanks";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private TankService tankService;
+
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    // Prevent JPA auditing from requiring a real
+    // JPA metamodel in this MVC slice test.
+    @MockitoBean(name = "jpaMappingContext")
+    private JpaMetamodelMappingContext jpaMappingContext;
+
+    @Test
+    void ownerCanReadOwnTank() throws Exception {
+
+        mockAuthentication(
+                "owner-token",
+                42,
+                "ROLE_USER"
+        );
+
+        Tank tank = new Tank(
+                10,
+                42,
+                "Cisterna Principal",
+                1000,
+                820
+        );
+
+        when(tankService.getByIdForUser(10, 42))
+                .thenReturn(Optional.of(tank));
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer owner-token"
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.tankId").value(10))
+        .andExpect(jsonPath("$.userId").value(42))
+        .andExpect(
+                jsonPath("$.name")
+                        .value("Cisterna Principal")
+        );
+
+        verify(tankService).getByIdForUser(10, 42);
+    }
+
+    @Test
+    void userCannotReadAnotherUsersTank()
+            throws Exception {
+
+        mockAuthentication(
+                "other-user-token",
+                99,
+                "ROLE_USER"
+        );
+
+        when(tankService.getByIdForUser(10, 99))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer other-user-token"
+                        )
+        )
+        .andExpect(status().isNotFound());
+
+        verify(tankService).getByIdForUser(10, 99);
+
+        verify(tankService, never())
+                .getByIdForUser(10, 42);
+    }
+
+    @Test
+    void unauthenticatedUserCannotReadTank()
+            throws Exception {
+
+        mockMvc.perform(
+                get(BASE + "/10")
+        )
+        .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(tankService);
+    }
+
+    @Test
+    void invalidJwtCannotReadTank()
+            throws Exception {
+
+        when(jwtService.verify("invalid-token"))
+                .thenThrow(
+                        new JwtException("Invalid JWT")
+                );
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer invalid-token"
+                        )
+        )
+        .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(tankService);
+    }
+
+    @Test
+    void userWithoutPermittedRoleCannotReadTank()
+            throws Exception {
+
+        mockAuthentication(
+                "roleless-token",
+                50,
+                null
+        );
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer roleless-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+
+        verifyNoInteractions(tankService);
+    }
+
+    @Test
+    void administratorDoesNotAutomaticallyBypassOwnership()
+            throws Exception {
+
+        mockAuthentication(
+                "admin-token",
+                1,
+                "ROLE_ADMIN"
+        );
+
+        when(tankService.getByIdForUser(10, 1))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer admin-token"
+                        )
+        )
+        .andExpect(status().isNotFound());
+
+        verify(tankService).getByIdForUser(10, 1);
+    }
+
+    @Test
+    void otherTankOperationsMustRemainBlocked()
+            throws Exception {
+
+        mockAuthentication(
+                "authenticated-token",
+                42,
+                "ROLE_USER"
+        );
+
+        mockMvc.perform(
+                get(BASE)
+                        .header(
+                                "Authorization",
+                                "Bearer authenticated-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                get(BASE + "/user/42")
+                        .header(
+                                "Authorization",
+                                "Bearer authenticated-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                post(BASE)
+                        .header(
+                                "Authorization",
+                                "Bearer authenticated-token"
+                        )
+                        .contentType(
+                                MediaType.APPLICATION_JSON
+                        )
+                        .content("{}")
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                put(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer authenticated-token"
+                        )
+                        .contentType(
+                                MediaType.APPLICATION_JSON
+                        )
+                        .content("{}")
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                put(BASE + "/10/replenish")
+                        .header(
+                                "Authorization",
+                                "Bearer authenticated-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                delete(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer authenticated-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+
+        verifyNoInteractions(tankService);
+    }
+
+    private void mockAuthentication(
+            String token,
+            Integer userId,
+            String roleName) {
+
+        Set<Role> roles = new HashSet<>();
+
+        if (roleName != null) {
+            roles.add(
+                    Role.createFromDatabase(
+                            "ROLE_ADMIN".equals(roleName)
+                                    ? 1 : 2,
+                            roleName,
+                            "Test role"
+                    )
+            );
+        }
+
+        User user = User.createFromDatabase(
+                userId,
+                "Test User",
+                "user-" + userId + "@example.com",
+                "hashed-password",
+                roles,
+                LocalDateTime.now(),
+                null,
+                false,
+                null
+        );
+
+        when(jwtService.verify(token))
+                .thenReturn(
+                        Jwts.claims()
+                                .subject(userId.toString())
+                                .build()
+                );
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+    }
+}
