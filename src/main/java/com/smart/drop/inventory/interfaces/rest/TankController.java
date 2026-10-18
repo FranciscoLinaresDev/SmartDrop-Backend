@@ -1,13 +1,13 @@
 
 package com.smart.drop.inventory.interfaces.rest;
 
-import io.swagger.v3.oas.annotations.tags.Tag;
-
 import com.smart.drop.inventory.application.services.TankService;
 import com.smart.drop.inventory.domain.model.entities.Tank;
 import com.smart.drop.inventory.interfaces.rest.dto.CreateTankRequest;
 import com.smart.drop.inventory.interfaces.rest.dto.TankResponse;
 import com.smart.drop.inventory.interfaces.rest.dto.UpdateTankRequest;
+
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -31,28 +31,40 @@ public class TankController {
         this.tankService = tankService;
     }
 
+    // CREATE: Owner is always obtained from authentication.
+    @PostMapping
+    public ResponseEntity<TankResponse> create(
+            @RequestBody CreateTankRequest request,
+            Authentication authentication) {
 
-@PostMapping
-public ResponseEntity<TankResponse> create(
-        @RequestBody CreateTankRequest request,
-        Authentication authentication) {
+        Integer authenticatedUserId =
+                getAuthenticatedUserId(authentication);
 
-    Integer authenticatedUserId =
-            getAuthenticatedUserId(authentication);
+        if (request == null
+                || request.name() == null
+                || request.name().isBlank()
+                || request.capacity() == null
+                || request.capacity() <= 0
+                || (request.current() != null
+                    && (request.current() < 0
+                        || request.current() > request.capacity()))) {
 
-    Tank created = tankService.createTank(
-            authenticatedUserId,
-            request.name(),
-            request.capacity(),
-            request.current()
-    );
+            return ResponseEntity.badRequest().build();
+        }
 
-    return ResponseEntity
-            .status(HttpStatus.CREATED)
-            .body(toResponse(created));
-}
+        Tank created = tankService.createTank(
+                authenticatedUserId,
+                request.name(),
+                request.capacity(),
+                request.current()
+        );
 
+        return ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(toResponse(created));
+    }
 
+    // READ: Only return tanks owned by the authenticated user.
     @GetMapping("/{tankId}")
     public ResponseEntity<TankResponse> getById(
             @PathVariable Integer tankId,
@@ -61,18 +73,13 @@ public ResponseEntity<TankResponse> create(
         Integer authenticatedUserId =
                 getAuthenticatedUserId(authentication);
 
-        return tankService.getByIdForUser(
-                        tankId,
-                        authenticatedUserId
-                )
-                .map(tank ->
-                        ResponseEntity.ok(toResponse(tank))
-                )
-                .orElseGet(() ->
-                        ResponseEntity.notFound().build()
-                );
+        return tankService
+                .getByIdForUser(tankId, authenticatedUserId)
+                .map(tank -> ResponseEntity.ok(toResponse(tank)))
+                .orElseGet(() -> ResponseEntity.notFound().build());
     }
 
+    // Currently blocked by SecurityConfig.
     @GetMapping("/user/{userId}")
     public ResponseEntity<List<TankResponse>> getByUserId(
             @PathVariable Integer userId) {
@@ -86,6 +93,7 @@ public ResponseEntity<TankResponse> create(
         return ResponseEntity.ok(data);
     }
 
+    // Currently blocked by SecurityConfig.
     @GetMapping
     public ResponseEntity<List<TankResponse>> getAll() {
 
@@ -98,6 +106,7 @@ public ResponseEntity<TankResponse> create(
         return ResponseEntity.ok(data);
     }
 
+    // Currently blocked by SecurityConfig.
     @PutMapping("/{tankId}")
     public ResponseEntity<TankResponse> update(
             @PathVariable Integer tankId,
@@ -113,6 +122,7 @@ public ResponseEntity<TankResponse> create(
         return ResponseEntity.ok(toResponse(updated));
     }
 
+    // Currently blocked by SecurityConfig.
     @PutMapping("/{tankId}/replenish")
     public ResponseEntity<TankResponse> replenish(
             @PathVariable Integer tankId) {
@@ -122,6 +132,7 @@ public ResponseEntity<TankResponse> create(
         return ResponseEntity.ok(toResponse(updated));
     }
 
+    // Currently blocked by SecurityConfig.
     @DeleteMapping("/{tankId}")
     public ResponseEntity<Void> delete(
             @PathVariable Integer tankId) {
@@ -136,6 +147,7 @@ public ResponseEntity<TankResponse> create(
 
         if (authentication == null
                 || !authentication.isAuthenticated()) {
+
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED
             );
@@ -155,6 +167,7 @@ public ResponseEntity<TankResponse> create(
             return userId;
 
         } catch (NumberFormatException ex) {
+
             throw new ResponseStatusException(
                     HttpStatus.UNAUTHORIZED,
                     "Invalid authentication identity"

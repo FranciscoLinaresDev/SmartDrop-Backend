@@ -328,6 +328,81 @@ void otherTankOperationsMustRemainBlocked()
     verifyNoInteractions(tankService);
 }
 
+@Test
+void invalidTankCreationDataMustReturnBadRequest()
+        throws Exception {
+
+    mockAuthentication(
+            "validation-test-token",
+            42,
+            "ROLE_USER"
+    );
+
+    String[] invalidRequests = {
+
+            // Empty tank name.
+            """
+            {
+              "name": "",
+              "capacity": 1000,
+              "current": 500
+            }
+            """,
+
+            // Negative capacity.
+            """
+            {
+              "name": "Mi Cisterna",
+              "capacity": -100,
+              "current": 50
+            }
+            """,
+
+            // Current level exceeds capacity.
+            """
+            {
+              "name": "Mi Cisterna",
+              "capacity": 1000,
+              "current": 1500
+            }
+            """,
+
+            // Negative current level.
+            """
+            {
+              "name": "Mi Cisterna",
+              "capacity": 1000,
+              "current": -10
+            }
+            """,
+
+            // Missing capacity.
+            """
+            {
+              "name": "Mi Cisterna",
+              "current": 500
+            }
+            """
+    };
+
+    for (String request : invalidRequests) {
+
+        mockMvc.perform(
+                post(BASE)
+                        .header(
+                                "Authorization",
+                                "Bearer validation-test-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request)
+        )
+        .andExpect(status().isBadRequest());
+    }
+
+    // Invalid requests must never reach the service.
+    verifyNoInteractions(tankService);
+}
+
 
     private void mockAuthentication(
             String token,
