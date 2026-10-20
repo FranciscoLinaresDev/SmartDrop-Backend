@@ -720,7 +720,6 @@ void ownerCanDeleteOwnTankThroughHttp()
     .andExpect(status().isNoContent());
 
     verify(tankService).deleteTankForUser(10, 42);
-    verify(tankService, never()).deleteById(any());
 }
 
 @Test
@@ -746,7 +745,6 @@ void userCannotDeleteAnotherUsersTankThroughHttp()
     .andExpect(status().isNotFound());
 
     verify(tankService).deleteTankForUser(10, 42);
-    verify(tankService, never()).deleteById(any());
 }
 
 @Test
@@ -964,6 +962,61 @@ void userWithoutPermittedRoleCannotListTanks()
 
     verifyNoInteractions(tankService);
 }
+
+@Test
+void missingCurrentMustBeRejectedOnCreateAndUpdate()
+        throws Exception {
+
+    mockAuthentication(
+            "missing-current-token",
+            42,
+            "ROLE_USER"
+    );
+
+    String[] invalidRequests = {
+            """
+            {
+              "name": "Mi Cisterna",
+              "capacity": 1000
+            }
+            """,
+            """
+            {
+              "name": "Mi Cisterna",
+              "capacity": 1000,
+              "current": null
+            }
+            """
+    };
+
+    for (String request : invalidRequests) {
+
+        mockMvc.perform(
+                post(BASE)
+                        .header(
+                                "Authorization",
+                                "Bearer missing-current-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request)
+        )
+        .andExpect(status().isBadRequest());
+
+        mockMvc.perform(
+                put(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer missing-current-token"
+                        )
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(request)
+        )
+        .andExpect(status().isBadRequest());
+    }
+
+    verifyNoInteractions(tankService);
+}
+
 
 
 

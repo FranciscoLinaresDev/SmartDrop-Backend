@@ -177,18 +177,21 @@ public ResponseEntity<Void> delete(
 }
 
 
-    private boolean isInvalidTankData(
-            String name,
-            Integer capacity,
-            Integer current) {
 
-        return name == null
-                || name.isBlank()
-                || capacity == null
-                || capacity <= 0
-                || (current != null
-                    && (current < 0 || current > capacity));
-    }
+private boolean isInvalidTankData(
+        String name,
+        Integer capacity,
+        Integer current) {
+
+    return name == null
+            || name.isBlank()
+            || capacity == null
+            || capacity <= 0
+            || current == null
+            || current < 0
+            || current > capacity;
+}
+
 
     private Integer getAuthenticatedUserId(
             Authentication authentication) {
