@@ -115,6 +115,13 @@ public class SecurityConfig {
     "/api/v1/inventory/devices/{deviceId}"
 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+// Create sensors for the authenticated user.
+.requestMatchers(
+    HttpMethod.POST,
+    "/api/v1/inventory/devices"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
+
 
                 // Block all other routes by default.
                 .anyRequest().denyAll()

@@ -201,50 +201,218 @@ class SensorDeviceSecurityHttpTest {
         verifyNoInteractions(sensorDeviceService);
     }
 
-    @Test
-    void otherSensorOperationsRemainBlocked()
-            throws Exception {
 
-        mockAuthentication(
-                "sensor-blocked-token",
-                42,
-                "ROLE_USER"
-        );
 
-        String authorization = "Bearer sensor-blocked-token";
+@Test
+void otherSensorOperationsRemainBlocked()
+        throws Exception {
 
-        mockMvc.perform(
-                get(BASE)
-                        .header("Authorization", authorization)
-        )
-        .andExpect(status().isForbidden());
+    mockAuthentication(
+            "sensor-blocked-token",
+            42,
+            "ROLE_USER"
+    );
 
-        mockMvc.perform(
-                get(BASE + "/user/42")
-                        .header("Authorization", authorization)
-        )
-        .andExpect(status().isForbidden());
+    String authorization =
+            "Bearer sensor-blocked-token";
+
+    mockMvc.perform(
+            get(BASE)
+                    .header("Authorization", authorization)
+    )
+    .andExpect(status().isForbidden());
+
+    mockMvc.perform(
+            get(BASE + "/user/42")
+                    .header("Authorization", authorization)
+    )
+    .andExpect(status().isForbidden());
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header("Authorization", authorization)
+    )
+    .andExpect(status().isForbidden());
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header("Authorization", authorization)
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+
+@Test
+void userCannotCreateSensorForAnotherAccount()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-create-token",
+            42,
+            "ROLE_USER"
+    );
+
+    SensorDevice created = new SensorDevice(
+            10,
+            42,
+            "Sensor Principal",
+            "Cocina",
+            "15",
+            "120",
+            85,
+            "ACTIVE"
+    );
+
+    when(sensorDeviceService.createDevice(
+            42,
+            "Sensor Principal",
+            "Cocina",
+            "15",
+            "120",
+            85,
+            "ACTIVE"
+    )).thenReturn(created);
+
+    mockMvc.perform(
+            post(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-create-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "userId": 999,
+                          "name": "Sensor Principal",
+                          "location": "Cocina",
+                          "flow": "15",
+                          "daily": "120",
+                          "battery": 85,
+                          "status": "ACTIVE"
+                        }
+                        """)
+    )
+    .andExpect(status().isCreated())
+    .andExpect(jsonPath("$.deviceId").value(10))
+    .andExpect(jsonPath("$.userId").value(42));
+
+    verify(sensorDeviceService).createDevice(
+            42,
+            "Sensor Principal",
+            "Cocina",
+            "15",
+            "120",
+            85,
+            "ACTIVE"
+    );
+
+    verify(sensorDeviceService, never()).createDevice(
+            eq(999),
+            any(),
+            any(),
+            any(),
+            any(),
+            any(),
+            any()
+    );
+}
+
+@Test
+void invalidSensorCreationMustReturnBadRequest()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-invalid-create-token",
+            42,
+            "ROLE_USER"
+    );
+
+    String[] invalidRequests = {
+            """
+            {
+              "name": "",
+              "battery": 85
+            }
+            """,
+            """
+            {
+              "name": "Sensor Principal",
+              "battery": -1
+            }
+            """,
+            """
+            {
+              "name": "Sensor Principal",
+              "battery": 101
+            }
+            """
+    };
+
+    for (String request : invalidRequests) {
 
         mockMvc.perform(
                 post(BASE)
-                        .header("Authorization", authorization)
+                        .header(
+                                "Authorization",
+                                "Bearer sensor-invalid-create-token"
+                        )
+                        .contentType(
+                                org.springframework.http.MediaType.APPLICATION_JSON
+                        )
+                        .content(request)
         )
-        .andExpect(status().isForbidden());
-
-        mockMvc.perform(
-                put(BASE + "/10")
-                        .header("Authorization", authorization)
-        )
-        .andExpect(status().isForbidden());
-
-        mockMvc.perform(
-                delete(BASE + "/10")
-                        .header("Authorization", authorization)
-        )
-        .andExpect(status().isForbidden());
-
-        verifyNoInteractions(sensorDeviceService);
+        .andExpect(status().isBadRequest());
     }
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void unauthenticatedUserCannotCreateSensor()
+        throws Exception {
+
+    mockMvc.perform(
+            post(BASE)
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("{}")
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotCreateSensor()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-create-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            post(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-create-roleless-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("{}")
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
 
     private void mockAuthentication(
             String token,

@@ -34,24 +34,43 @@ public class SensorDeviceController {
     }
 
     // Still blocked by SecurityConfig.
-    @PostMapping
-    public ResponseEntity<SensorDeviceResponse> create(
-            @RequestBody CreateSensorDeviceRequest request) {
 
-        SensorDevice created = sensorDeviceService.createDevice(
-                request.userId(),
-                request.name(),
-                request.location(),
-                request.flow(),
-                request.daily(),
-                request.battery(),
-                request.status()
-        );
+@PostMapping
+public ResponseEntity<SensorDeviceResponse> create(
+        @RequestBody CreateSensorDeviceRequest request,
+        Authentication authentication) {
 
-        return ResponseEntity
-                .status(HttpStatus.CREATED)
-                .body(toResponse(created));
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    // Validate basic device data.
+    if (request == null
+            || request.name() == null
+            || request.name().isBlank()
+            || (request.battery() != null
+                && (request.battery() < 0
+                    || request.battery() > 100))) {
+
+        return ResponseEntity.badRequest().build();
     }
+
+    // The device owner always comes from the JWT.
+    // Never trust userId supplied by the client.
+    SensorDevice created = sensorDeviceService.createDevice(
+            authenticatedUserId,
+            request.name(),
+            request.location(),
+            request.flow(),
+            request.daily(),
+            request.battery(),
+            request.status()
+    );
+
+    return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(toResponse(created));
+}
+
 
     // SECURE: Read only sensors owned by the authenticated user.
     @GetMapping("/{deviceId}")
