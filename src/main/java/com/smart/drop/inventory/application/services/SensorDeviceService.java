@@ -153,6 +153,25 @@ public Optional<SensorDevice> updateDeviceForUser(
         return sensorDeviceRepository.save(updated);
     }
 
+public boolean deleteDeviceForUser(
+        Integer deviceId,
+        Integer authenticatedUserId) {
+
+    validateAuthenticatedUser(authenticatedUserId);
+
+    if (deviceId == null || deviceId <= 0) {
+        return false;
+    }
+
+    int deletedRows = sensorDeviceRepository.deleteOwnedDevice(
+            deviceId,
+            authenticatedUserId
+    );
+
+    return deletedRows == 1;
+}
+
+
     // Legacy deletion. Route remains blocked.
     public void deleteById(Integer deviceId) {
         sensorDeviceRepository.deleteById(deviceId);

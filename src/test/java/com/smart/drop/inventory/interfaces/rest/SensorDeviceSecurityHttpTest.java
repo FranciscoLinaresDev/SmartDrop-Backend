@@ -204,6 +204,7 @@ class SensorDeviceSecurityHttpTest {
 
 
 
+
 @Test
 void otherSensorOperationsRemainBlocked()
         throws Exception {
@@ -214,8 +215,7 @@ void otherSensorOperationsRemainBlocked()
             "ROLE_USER"
     );
 
-    String authorization =
-            "Bearer sensor-blocked-token";
+    String authorization = "Bearer sensor-blocked-token";
 
     mockMvc.perform(
             get(BASE)
@@ -229,15 +229,8 @@ void otherSensorOperationsRemainBlocked()
     )
     .andExpect(status().isForbidden());
 
-    mockMvc.perform(
-            delete(BASE + "/10")
-                    .header("Authorization", authorization)
-    )
-    .andExpect(status().isForbidden());
-
     verifyNoInteractions(sensorDeviceService);
 }
-
 
 
 @Test
@@ -707,6 +700,140 @@ void invalidJwtCannotUpdateSensor()
 
     verifyNoInteractions(sensorDeviceService);
 }
+
+
+@Test
+void ownerCanDeleteOwnSensorThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-delete-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(sensorDeviceService.deleteDeviceForUser(10, 42))
+            .thenReturn(true);
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-delete-owner-token"
+                    )
+    )
+    .andExpect(status().isNoContent());
+
+    verify(sensorDeviceService).deleteDeviceForUser(10, 42);
+    verify(sensorDeviceService, never()).deleteById(any());
+}
+
+@Test
+void userCannotDeleteAnotherUsersSensorThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-delete-foreign-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(sensorDeviceService.deleteDeviceForUser(10, 42))
+            .thenReturn(false);
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-delete-foreign-token"
+                    )
+    )
+    .andExpect(status().isNotFound());
+
+    verify(sensorDeviceService).deleteDeviceForUser(10, 42);
+    verify(sensorDeviceService, never()).deleteById(any());
+}
+
+@Test
+void nonexistentSensorCannotBeDeletedThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-delete-missing-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(sensorDeviceService.deleteDeviceForUser(999, 42))
+            .thenReturn(false);
+
+    mockMvc.perform(
+            delete(BASE + "/999")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-delete-missing-token"
+                    )
+    )
+    .andExpect(status().isNotFound());
+
+    verify(sensorDeviceService).deleteDeviceForUser(999, 42);
+}
+
+@Test
+void unauthenticatedUserCannotDeleteSensor()
+        throws Exception {
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotDeleteSensor()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-delete-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-delete-roleless-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void invalidJwtCannotDeleteSensor()
+        throws Exception {
+
+    when(jwtService.verify("invalid-sensor-delete-token"))
+            .thenThrow(
+                    new JwtException("Invalid JWT")
+            );
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer invalid-sensor-delete-token"
+                    )
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
 
 
 

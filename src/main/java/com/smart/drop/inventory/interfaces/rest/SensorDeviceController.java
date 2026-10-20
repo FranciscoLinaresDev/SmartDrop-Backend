@@ -163,14 +163,26 @@ public ResponseEntity<SensorDeviceResponse> update(
 
 
     // Still blocked by SecurityConfig.
-    @DeleteMapping("/{deviceId}")
-    public ResponseEntity<Void> delete(
-            @PathVariable Integer deviceId) {
 
-        sensorDeviceService.deleteById(deviceId);
+@DeleteMapping("/{deviceId}")
+public ResponseEntity<Void> delete(
+        @PathVariable Integer deviceId,
+        Authentication authentication) {
 
-        return ResponseEntity.noContent().build();
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    boolean deleted = sensorDeviceService.deleteDeviceForUser(
+            deviceId,
+            authenticatedUserId
+    );
+
+    if (!deleted) {
+        return ResponseEntity.notFound().build();
     }
+
+    return ResponseEntity.noContent().build();
+}
 
     private Integer getAuthenticatedUserId(
             Authentication authentication) {
@@ -184,7 +196,6 @@ public ResponseEntity<SensorDeviceResponse> update(
         }
 
         try {
-
             Integer userId = Integer.valueOf(
                     authentication.getName()
             );
@@ -221,3 +232,4 @@ public ResponseEntity<SensorDeviceResponse> update(
         );
     }
 }
+

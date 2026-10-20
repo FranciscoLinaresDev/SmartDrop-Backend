@@ -127,6 +127,13 @@ public class SecurityConfig {
     "/api/v1/inventory/devices/{deviceId}"
 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+// Delete only sensors owned by the authenticated user.
+.requestMatchers(
+    HttpMethod.DELETE,
+    "/api/v1/inventory/devices/{deviceId}"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
+
 
 
 
