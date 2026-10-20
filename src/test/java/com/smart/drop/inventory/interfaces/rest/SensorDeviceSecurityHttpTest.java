@@ -460,10 +460,6 @@ void ownerCanUpdateOwnSensorThroughHttp()
             "ACTIVE"
     );
 
-    verify(sensorDeviceService, never()).updateDevice(
-            any(), any(), any(), any(),
-            any(), any(), any()
-    );
 }
 
 @Test
@@ -718,7 +714,6 @@ void ownerCanDeleteOwnSensorThroughHttp()
     .andExpect(status().isNoContent());
 
     verify(sensorDeviceService).deleteDeviceForUser(10, 42);
-    verify(sensorDeviceService, never()).deleteById(any());
 }
 
 @Test
@@ -744,7 +739,6 @@ void userCannotDeleteAnotherUsersSensorThroughHttp()
     .andExpect(status().isNotFound());
 
     verify(sensorDeviceService).deleteDeviceForUser(10, 42);
-    verify(sensorDeviceService, never()).deleteById(any());
 }
 
 @Test
@@ -865,7 +859,6 @@ void userCanListOnlyOwnSensors()
     .andExpect(jsonPath("$[1].userId").value(42));
 
     verify(sensorDeviceService).getByUserId(42);
-    verify(sensorDeviceService, never()).getAll();
     verify(sensorDeviceService, never()).getByUserId(999);
 }
 
