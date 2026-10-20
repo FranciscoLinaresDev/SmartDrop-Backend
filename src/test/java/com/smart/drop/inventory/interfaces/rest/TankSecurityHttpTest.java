@@ -25,6 +25,7 @@ import java.time.LocalDateTime;
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
+import java.util.List;
 
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
@@ -263,6 +264,7 @@ void userCannotCreateTankForAnotherAccount()
 
 
 
+
 @Test
 void otherTankOperationsMustRemainBlocked()
         throws Exception {
@@ -273,17 +275,7 @@ void otherTankOperationsMustRemainBlocked()
             "ROLE_USER"
     );
 
-    // Global tank listing remains blocked.
-    mockMvc.perform(
-            get(BASE)
-                    .header(
-                            "Authorization",
-                            "Bearer authenticated-token"
-                    )
-    )
-    .andExpect(status().isForbidden());
-
-    // Arbitrary user tank listing remains blocked.
+    // Arbitrary user listing must remain blocked.
     mockMvc.perform(
             get(BASE + "/user/42")
                     .header(
@@ -295,6 +287,7 @@ void otherTankOperationsMustRemainBlocked()
 
     verifyNoInteractions(tankService);
 }
+
 
 @Test
 void invalidTankCreationDataMustReturnBadRequest()
@@ -835,6 +828,143 @@ void invalidJwtCannotDeleteTank()
 
     verifyNoInteractions(tankService);
 }
+
+
+@Test
+void authenticatedUserCanListOwnTanks()
+        throws Exception {
+
+    mockAuthentication(
+            "list-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.getByUserId(42))
+            .thenReturn(List.of(
+                    new Tank(
+                            10, 42,
+                            "Cisterna Principal",
+                            1000, 500
+                    ),
+                    new Tank(
+                            11, 42,
+                            "Cisterna Secundaria",
+                            800, 300
+                    )
+            ));
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer list-owner-token"
+                    )
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.length()").value(2))
+    .andExpect(jsonPath("$[0].userId").value(42))
+    .andExpect(jsonPath("$[1].userId").value(42));
+
+    verify(tankService).getByUserId(42);
+    verify(tankService, never()).getAll();
+}
+
+@Test
+void clientCannotChooseAnotherUserForTankListing()
+        throws Exception {
+
+    mockAuthentication(
+            "list-spoof-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.getByUserId(42))
+            .thenReturn(List.of(
+                    new Tank(
+                            10, 42,
+                            "Mi Cisterna",
+                            1000, 500
+                    )
+            ));
+
+    mockMvc.perform(
+            get(BASE)
+                    .param("userId", "99")
+                    .header(
+                            "Authorization",
+                            "Bearer list-spoof-token"
+                    )
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$[0].userId").value(42));
+
+    verify(tankService).getByUserId(42);
+    verify(tankService, never()).getByUserId(99);
+    verify(tankService, never()).getAll();
+}
+
+@Test
+void userWithoutTanksReceivesEmptyList()
+        throws Exception {
+
+    mockAuthentication(
+            "empty-list-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.getByUserId(42))
+            .thenReturn(List.of());
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer empty-list-token"
+                    )
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$").isEmpty());
+
+    verify(tankService).getByUserId(42);
+}
+
+@Test
+void unauthenticatedUserCannotListTanks()
+        throws Exception {
+
+    mockMvc.perform(
+            get(BASE)
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void userWithoutPermittedRoleCannotListTanks()
+        throws Exception {
+
+    mockAuthentication(
+            "list-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer list-roleless-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(tankService);
+}
+
 
 
 

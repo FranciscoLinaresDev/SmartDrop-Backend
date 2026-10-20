@@ -103,6 +103,12 @@ public class SecurityConfig {
                     "/api/v1/inventory/tanks/{tankId}"
                 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+// List only tanks belonging to the authenticated user.
+.requestMatchers(
+    HttpMethod.GET,
+    "/api/v1/inventory/tanks"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
                 // Block all other routes by default.
                 .anyRequest().denyAll()
             )

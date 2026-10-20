@@ -86,17 +86,23 @@ public class TankController {
         return ResponseEntity.ok(data);
     }
 
-    @GetMapping
-    public ResponseEntity<List<TankResponse>> getAll() {
 
-        List<TankResponse> data = tankService
-                .getAll()
-                .stream()
-                .map(this::toResponse)
-                .toList();
+@GetMapping
+public ResponseEntity<List<TankResponse>> getAll(
+        Authentication authentication) {
 
-        return ResponseEntity.ok(data);
-    }
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    List<TankResponse> data = tankService
+            .getByUserId(authenticatedUserId)
+            .stream()
+            .map(this::toResponse)
+            .toList();
+
+    return ResponseEntity.ok(data);
+}
+
 
     // Secure update: ownership is verified by TankService.
     @PutMapping("/{tankId}")
