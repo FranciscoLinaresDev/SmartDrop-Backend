@@ -1,5 +1,7 @@
 package com.smart.drop.iam.interfaces.rest;
 
+import com.smart.drop.shared.infrastructure.security.JwtService;
+import com.smart.drop.iam.interfaces.rest.dto.LoginResponseDto;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import com.smart.drop.iam.application.services.AuthService;
 import com.smart.drop.iam.interfaces.rest.dto.LoginUserRequestDto;
@@ -9,7 +11,7 @@ import com.smart.drop.iam.interfaces.rest.dto.AssignRoleRequestDto;
 import com.smart.drop.iam.interfaces.rest.dto.ForgotPasswordRequestDto;
 import com.smart.drop.iam.interfaces.rest.dto.ResetPasswordRequestDto;
 import com.smart.drop.iam.interfaces.rest.dto.Enable2FARequestDto;
-import com.smart.drop.iam.interfaces.rest.dto.Verify2FARequestDto;
+import com.smart.drop.iam.interfaces.rest.dto.VerifyTwoFactorChallengeRequestDto;
 import com.smart.drop.iam.interfaces.rest.dto.ChangePasswordRequestDto;
 import com.smart.drop.iam.interfaces.rest.dto.ChangePasswordRequestDto;
 import com.smart.drop.iam.interfaces.rest.dto.Disable2FARequestDto;
@@ -21,6 +23,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import java.util.Map;
 
+import com.smart.drop.iam.application.services.TwoFactorChallengeService;
+import org.springframework.beans.factory.annotation.Autowired;
 /**
  * Controlador REST para gestión de autenticación y usuarios.
  * Mapea requests HTTP a casos de uso del dominio.
@@ -31,9 +35,20 @@ import java.util.Map;
 public class AuthController {
 
     private final AuthService authService;
+    private final JwtService jwtService;
+    private TwoFactorChallengeService twoFactorChallengeService;
 
-    public AuthController(AuthService authService) {
+    public AuthController(
+            AuthService authService,
+            JwtService jwtService) {
+
         this.authService = authService;
+        this.jwtService = jwtService;
+    }
+
+    @Autowired(required = false)
+    public void setTwoFactorChallengeService(TwoFactorChallengeService service) {
+        this.twoFactorChallengeService = service;
     }
 
     /**
@@ -62,17 +77,39 @@ public class AuthController {
     public ResponseEntity<?> loginUser(@RequestBody LoginUserRequestDto request) {
         try {
             User user = authService.loginUser(request.email(), request.password());
-            UserResponseDto response = toUserResponseDto(user);
-            return ResponseEntity.ok(response);
+            String accessToken = jwtService.createAccessToken(user.getId(), user.getEmail());
+            return ResponseEntity.ok(new LoginResponseDto(
+                    user.getId(), user.getFullName(), user.getEmail(),
+                    user.getCreatedAt(), accessToken, "Bearer"
+            ));
         } catch (TwoFactorRequiredException e) {
-            return ResponseEntity.status(HttpStatus.ACCEPTED).body(Map.of("requires2FA", true, "simulatedCode", e.getSimulatedCode(), "message", "A 6-digit code has been sent to your email."));
-        }
-    }
+            // An incomplete/misconfigured second factor must never grant a JWT.
+            if (twoFactorChallengeService == null) {
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                        .body(Map.of("message", "Two-factor verification is not configured."));
+            }
 
-    @PostMapping("/forgot-password")
-    public ResponseEntity<?> forgotPassword(@RequestBody ForgotPasswordRequestDto request) {
-        String token = authService.generatePasswordResetToken(request.email());
-        return ResponseEntity.ok(Map.of("success", true, "token", token, "message", "Recovery link simulated in console."));
+            User user = authService.getUserByEmail(request.email())
+                    .orElseThrow(() -> new IllegalStateException("Authenticated account is missing"));
+            if (!Boolean.TRUE.equals(user.getIsTwoFactorEnabled())) {
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(Map.of("message", "Account verification state changed. Retry login."));
+            }
+
+            try {
+                String challengeId = twoFactorChallengeService
+                        .createAfterPasswordVerified(user.getId(), user.getEmail());
+                return ResponseEntity.status(HttpStatus.ACCEPTED)
+                        .body(Map.of(
+                                "requires2FA", true,
+                                "challengeId", challengeId,
+                                "message", "Check your registered email for a verification code."
+                        ));
+            } catch (IllegalStateException rateLimited) {
+                return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                        .body(Map.of("message", "A verification code was recently requested."));
+            }
+        }
     }
 
     @PostMapping("/reset-password")
@@ -83,8 +120,9 @@ public class AuthController {
 
     @PostMapping("/2fa/enable")
     public ResponseEntity<?> enable2FA(@RequestBody Enable2FARequestDto request) {
-        authService.enable2FA(request.email());
-        return ResponseEntity.ok(Map.of("success", true, "message", "2FA has been enabled successfully via Email."));
+        // Never enable 2FA based solely on a caller-supplied email.
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("message", "2FA account management is not yet available."));
     }
 
     @GetMapping("/2fa/status/{email}")
@@ -95,10 +133,35 @@ public class AuthController {
     }
 
     @PostMapping("/2fa/verify")
-    public ResponseEntity<UserResponseDto> verify2FA(@RequestBody Verify2FARequestDto request) {
-        User user = authService.verify2FA(request.email(), request.code());
-        UserResponseDto response = toUserResponseDto(user);
-        return ResponseEntity.ok(response);
+    public ResponseEntity<?> verify2FA(@RequestBody VerifyTwoFactorChallengeRequestDto request) {
+        if (twoFactorChallengeService == null) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .body(Map.of("message", "Two-factor verification is not configured."));
+        }
+        if (request == null || request.challengeId() == null ||
+                request.challengeId().isBlank() || request.code() == null ||
+                !request.code().matches("[0-9]{6}")) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("message", "Invalid verification request."));
+        }
+
+        var verified = twoFactorChallengeService.verify(request.challengeId(), request.code());
+        if (!verified.verified()) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Invalid or expired verification code."));
+        }
+
+        User user = authService.getUser(verified.userId()).orElse(null);
+        if (user == null || !Boolean.TRUE.equals(user.getIsTwoFactorEnabled())) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                    .body(Map.of("message", "Account is not eligible for two-factor login."));
+        }
+
+        String accessToken = jwtService.createAccessToken(user.getId(), user.getEmail());
+        return ResponseEntity.ok(new LoginResponseDto(
+                user.getId(), user.getFullName(), user.getEmail(),
+                user.getCreatedAt(), accessToken, "Bearer"
+        ));
     }
 
 
@@ -116,8 +179,9 @@ public class AuthController {
 
     @PostMapping("/2fa/disable")
     public ResponseEntity<?> disable2FA(@RequestBody Disable2FARequestDto request) {
-        authService.disable2FA(request.email());
-        return ResponseEntity.ok(Map.of("success", true, "message", "2FA has been disabled."));
+        // Never disable 2FA based solely on a caller-supplied email.
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                .body(Map.of("message", "2FA account management is not yet available."));
     }
 
     /**

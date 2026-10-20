@@ -40,6 +40,19 @@ public class TankRepositoryAdapter implements TankRepository {
         return tankJpaRepository.findAll().stream().map(this::toDomain).toList();
     }
 
+
+@Override
+public int deleteOwnedTank(
+        Integer tankId,
+        Integer userId) {
+
+    return tankJpaRepository.deleteOwnedTank(
+            tankId,
+            userId
+    );
+}
+
+
     @Override
     public void deleteById(Integer tankId) {
         tankJpaRepository.deleteById(tankId);

@@ -1,5 +1,6 @@
 package com.smart.drop.iam.application.services;
 
+import com.smart.drop.iam.domain.model.repositories.AdminRoleGuard;
 import com.smart.drop.iam.domain.model.User;
 import com.smart.drop.iam.domain.model.Role;
 import com.smart.drop.iam.domain.model.repositories.UserRepository;
@@ -7,12 +8,12 @@ import com.smart.drop.iam.domain.model.repositories.RoleRepository;
 import com.smart.drop.iam.domain.exceptions.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.Random;
 
 /**
  * Servicio de aplicación para autenticación utilizando inyección de dependencias.
@@ -22,13 +23,25 @@ import java.util.Random;
 @Transactional
 public class AuthService {
 
+    private final AdminRoleGuard adminRoleGuard;
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public AuthService(UserRepository userRepository, RoleRepository roleRepository) {
-        this.userRepository = userRepository;
-        this.roleRepository = roleRepository;
-    }
+
+public AuthService(
+        UserRepository userRepository,
+        RoleRepository roleRepository,
+        PasswordEncoder passwordEncoder,
+        AdminRoleGuard adminRoleGuard) {
+
+    this.userRepository = userRepository;
+    this.roleRepository = roleRepository;
+    this.passwordEncoder = passwordEncoder;
+    this.adminRoleGuard = adminRoleGuard;
+}
+
+
 
     /**
      * Registra un nuevo usuario sin roles.
@@ -38,18 +51,21 @@ public class AuthService {
      * @param passwordHash hash de la contraseña
      * @return el usuario creado y persistido
      */
-    public User registerUser(String fullName, String email, String passwordHash) {
-        // Valida que el email no esté registrado
-        if (userRepository.findByEmail(email).isPresent()) {
-            throw UserAlreadyExistsException.withEmail(email);
-        }
+     public User registerUser(String fullName, String email, String password) {
+         if (userRepository.findByEmail(email).isPresent()) {
+             throw UserAlreadyExistsException.withEmail(email);
+         }
 
-        // Crea la entidad de dominio
-        User user = User.create(fullName, email, passwordHash);
+         if (password == null || password.isBlank()) {
+             throw new IllegalArgumentException("Password cannot be empty");
+         }
 
-        // Persiste y retorna
-        return userRepository.save(user);
-    }
+         String passwordHash = passwordEncoder.encode(password);
+
+         User user = User.create(fullName, email, passwordHash);
+
+         return userRepository.save(user);
+     }
 
     /**
      * Valida las credenciales e inicia sesión para un usuario.
@@ -62,18 +78,15 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> UserNotFoundException.withEmail(email));
 
-        if (!user.getPasswordHash().equals(password)) {
+        if (password == null ||
+                !passwordEncoder.matches(password, user.getPasswordHash())) {
             throw new IllegalArgumentException("Invalid credentials");
         }
 
         if (Boolean.TRUE.equals(user.getIsTwoFactorEnabled())) {
-            String code = String.format("%06d", new Random().nextInt(999999));
-            user.setTwoFactorCode(code);
-            userRepository.update(user);
-            System.out.println("\n=======================================================");
-            System.out.println("2FA CODE GENERATED FOR " + email + ": " + code);
-            System.out.println("=======================================================\n");
-            throw new TwoFactorRequiredException(email, code);
+            // The controller creates a protected challenge after password verification.
+            // Do not generate, persist or log legacy 2FA codes.
+            throw new TwoFactorRequiredException(user.getEmail(), "");
         }
 
         return user;
@@ -82,15 +95,11 @@ public class AuthService {
     public String generatePasswordResetToken(String email) {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> UserNotFoundException.withEmail(email));
-        
+
         String token = UUID.randomUUID().toString();
         user.setResetToken(token);
         userRepository.update(user);
-        
-        System.out.println("\n=======================================================");
-        System.out.println("PASSWORD RESET TOKEN FOR " + email + ": " + token);
-        System.out.println("=======================================================\n");
-        
+        // Never print password reset tokens to application logs.
         return token;
     }
 
@@ -99,8 +108,12 @@ public class AuthService {
                 .filter(u -> token.equals(u.getResetToken()))
                 .findFirst()
                 .orElseThrow(InvalidTokenException::new);
-                
-        user.setPasswordHash(newPassword);
+
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new IllegalArgumentException("Password cannot be empty");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
         user.setResetToken(null);
         userRepository.update(user);
     }
@@ -113,26 +126,32 @@ public class AuthService {
     }
 
     public User verify2FA(String email, String code) {
-        User user = userRepository.findByEmail(email)
-                .orElseThrow(() -> UserNotFoundException.withEmail(email));
-                
-        if (code == null || !code.equals(user.getTwoFactorCode())) {
-            throw new IllegalArgumentException("Invalid 2FA code");
-        }
-        
-        user.setTwoFactorCode(null);
-        return userRepository.update(user);
+        // The legacy user-stored code cannot be used to bypass the new challenge flow.
+        throw new UnsupportedOperationException("Legacy 2FA verification is disabled");
     }
 
-    public void changePassword(String email, String currentPassword, String newPassword) {
+    public void changePassword(
+            String email,
+            String currentPassword,
+            String newPassword) {
+
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> UserNotFoundException.withEmail(email));
 
-        if (!user.getPasswordHash().equals(currentPassword)) {
-            throw new IllegalArgumentException("Current password is incorrect");
+        if (currentPassword == null ||
+                !passwordEncoder.matches(
+                        currentPassword,
+                        user.getPasswordHash())) {
+
+            throw new IllegalArgumentException(
+                    "Current password is incorrect");
         }
 
-        user.setPasswordHash(newPassword);
+        if (newPassword == null || newPassword.isBlank()) {
+            throw new IllegalArgumentException("Password cannot be empty");
+        }
+
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
         userRepository.update(user);
     }
 
@@ -214,26 +233,39 @@ public class AuthService {
      * @param roleName el nombre del rol
      * @return el usuario actualizado sin el rol
      */
-    public User revokeRoleFromUser(Integer userId, String roleName) {
-        // Obtiene el usuario
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> UserNotFoundException.withId(userId));
 
-        // Obtiene el rol
-        Role role = roleRepository.findByName(roleName)
-                .orElseThrow(() -> RoleNotFoundException.withName(roleName));
+public User revokeRoleFromUser(
+        Integer userId,
+        String roleName) {
 
-        // Valida que el usuario tenga ese rol
-        if (!user.hasRole(roleName)) {
-            throw new IllegalArgumentException("User does not have role: " + roleName);
-        }
+    User user = userRepository.findById(userId)
+            .orElseThrow(
+                    () -> UserNotFoundException.withId(userId)
+            );
 
-        // Revoca el rol
-        user.removeRole(role);
+    Role role = roleRepository.findByName(roleName)
+            .orElseThrow(
+                    () -> RoleNotFoundException.withName(roleName)
+            );
 
-        // Persiste
-        return userRepository.update(user);
+    if (!user.hasRole(role.getName())) {
+        throw new IllegalArgumentException(
+                "User does not have role: " + roleName
+        );
     }
+
+    if ("ROLE_ADMIN".equalsIgnoreCase(role.getName())) {
+
+        // Locks the shared ADMIN role and its holders.
+        // Must remain in the same transaction as update().
+        adminRoleGuard.assertCanRemoveAdminRole(role.getId());
+    }
+
+    user.removeRole(role);
+
+    return userRepository.update(user);
+}
+
 
     /**
      * Verifica si un usuario tiene un rol específico.

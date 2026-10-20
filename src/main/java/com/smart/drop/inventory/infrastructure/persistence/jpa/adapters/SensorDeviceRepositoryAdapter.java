@@ -1,43 +1,62 @@
+
 package com.smart.drop.inventory.infrastructure.persistence.jpa.adapters;
 
 import com.smart.drop.inventory.domain.model.entities.SensorDevice;
 import com.smart.drop.inventory.domain.model.repositories.SensorDeviceRepository;
 import com.smart.drop.inventory.infrastructure.persistence.jpa.entities.SensorDeviceEntity;
 import com.smart.drop.inventory.infrastructure.persistence.jpa.repositories.SensorDeviceJpaRepository;
+
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 import java.util.Optional;
 
 @Component
-public class SensorDeviceRepositoryAdapter implements SensorDeviceRepository {
+public class SensorDeviceRepositoryAdapter
+        implements SensorDeviceRepository {
 
     private final SensorDeviceJpaRepository sensorDeviceJpaRepository;
 
-    public SensorDeviceRepositoryAdapter(SensorDeviceJpaRepository sensorDeviceJpaRepository) {
+    public SensorDeviceRepositoryAdapter(
+            SensorDeviceJpaRepository sensorDeviceJpaRepository) {
+
         this.sensorDeviceJpaRepository = sensorDeviceJpaRepository;
     }
 
     @Override
     public SensorDevice save(SensorDevice sensorDevice) {
+
         SensorDeviceEntity entity = toEntity(sensorDevice);
-        SensorDeviceEntity saved = sensorDeviceJpaRepository.save(entity);
+
+        SensorDeviceEntity saved =
+                sensorDeviceJpaRepository.save(entity);
+
         return toDomain(saved);
     }
 
     @Override
     public Optional<SensorDevice> findById(Integer deviceId) {
-        return sensorDeviceJpaRepository.findById(deviceId).map(this::toDomain);
+
+        return sensorDeviceJpaRepository.findById(deviceId)
+                .map(this::toDomain);
     }
 
     @Override
     public List<SensorDevice> findByUserId(Integer userId) {
-        return sensorDeviceJpaRepository.findByUserId(userId).stream().map(this::toDomain).toList();
+
+        return sensorDeviceJpaRepository.findByUserId(userId)
+                .stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     @Override
     public List<SensorDevice> findAll() {
-        return sensorDeviceJpaRepository.findAll().stream().map(this::toDomain).toList();
+
+        return sensorDeviceJpaRepository.findAll()
+                .stream()
+                .map(this::toDomain)
+                .toList();
     }
 
     @Override
@@ -45,8 +64,45 @@ public class SensorDeviceRepositoryAdapter implements SensorDeviceRepository {
         sensorDeviceJpaRepository.deleteById(deviceId);
     }
 
+@Override
+public int updateOwnedDevice(
+        Integer deviceId,
+        Integer userId,
+        String name,
+        String location,
+        String flow,
+        String daily,
+        Integer battery,
+        String status) {
+
+    return sensorDeviceJpaRepository.updateOwnedDevice(
+            deviceId,
+            userId,
+            name,
+            location,
+            flow,
+            daily,
+            battery,
+            status
+    );
+}
+
+
+    @Override
+    public int deleteOwnedDevice(
+            Integer deviceId,
+            Integer userId) {
+
+        return sensorDeviceJpaRepository.deleteOwnedDevice(
+                deviceId,
+                userId
+        );
+    }
+
     private SensorDeviceEntity toEntity(SensorDevice sensorDevice) {
+
         SensorDeviceEntity entity = new SensorDeviceEntity();
+
         entity.setDeviceId(sensorDevice.deviceId());
         entity.setUserId(sensorDevice.userId());
         entity.setName(sensorDevice.name());
@@ -55,10 +111,12 @@ public class SensorDeviceRepositoryAdapter implements SensorDeviceRepository {
         entity.setDaily(sensorDevice.daily());
         entity.setBattery(sensorDevice.battery());
         entity.setStatus(sensorDevice.status());
+
         return entity;
     }
 
     private SensorDevice toDomain(SensorDeviceEntity entity) {
+
         return new SensorDevice(
                 entity.getDeviceId(),
                 entity.getUserId(),

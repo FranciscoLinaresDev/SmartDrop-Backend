@@ -10,6 +10,8 @@ import java.util.Optional;
  */
 public interface TankRepository {
 
+int deleteOwnedTank(Integer tankId, Integer userId);
+
     Tank save(Tank tank);
 
     Optional<Tank> findById(Integer tankId);
