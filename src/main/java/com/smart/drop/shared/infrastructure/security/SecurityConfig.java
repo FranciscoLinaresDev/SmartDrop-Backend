@@ -133,6 +133,13 @@ public class SecurityConfig {
     "/api/v1/inventory/devices/{deviceId}"
 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+// List only the authenticated user's sensor devices.
+.requestMatchers(
+    HttpMethod.GET,
+    "/api/v1/inventory/devices"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
+
 
 
 

@@ -109,17 +109,22 @@ public ResponseEntity<SensorDeviceResponse> create(
     }
 
     // Still blocked by SecurityConfig.
-    @GetMapping
-    public ResponseEntity<List<SensorDeviceResponse>> getAll() {
 
-        List<SensorDeviceResponse> data =
-                sensorDeviceService.getAll()
-                        .stream()
-                        .map(this::toResponse)
-                        .toList();
+@GetMapping
+public ResponseEntity<List<SensorDeviceResponse>> getAll(
+        Authentication authentication) {
 
-        return ResponseEntity.ok(data);
-    }
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    List<SensorDeviceResponse> data =
+            sensorDeviceService.getByUserId(authenticatedUserId)
+                    .stream()
+                    .map(this::toResponse)
+                    .toList();
+
+    return ResponseEntity.ok(data);
+}
 
     // Still blocked by SecurityConfig.
 

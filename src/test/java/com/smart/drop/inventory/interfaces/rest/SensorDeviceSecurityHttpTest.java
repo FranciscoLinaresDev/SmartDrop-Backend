@@ -203,8 +203,6 @@ class SensorDeviceSecurityHttpTest {
 
 
 
-
-
 @Test
 void otherSensorOperationsRemainBlocked()
         throws Exception {
@@ -215,17 +213,12 @@ void otherSensorOperationsRemainBlocked()
             "ROLE_USER"
     );
 
-    String authorization = "Bearer sensor-blocked-token";
-
     mockMvc.perform(
-            get(BASE)
-                    .header("Authorization", authorization)
-    )
-    .andExpect(status().isForbidden());
-
-    mockMvc.perform(
-            get(BASE + "/user/42")
-                    .header("Authorization", authorization)
+            get(BASE + "/user/999")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-blocked-token"
+                    )
     )
     .andExpect(status().isForbidden());
 
@@ -833,6 +826,130 @@ void invalidJwtCannotDeleteSensor()
 
     verifyNoInteractions(sensorDeviceService);
 }
+
+@Test
+void userCanListOnlyOwnSensors()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-list-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    SensorDevice first = new SensorDevice(
+            10, 42, "Sensor Cocina", "Cocina",
+            "15", "120", 85, "ACTIVE"
+    );
+
+    SensorDevice second = new SensorDevice(
+            11, 42, "Sensor Sala", "Sala",
+            "20", "150", 90, "ACTIVE"
+    );
+
+    when(sensorDeviceService.getByUserId(42))
+            .thenReturn(java.util.List.of(first, second));
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-list-owner-token"
+                    )
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.length()").value(2))
+    .andExpect(jsonPath("$[0].deviceId").value(10))
+    .andExpect(jsonPath("$[0].userId").value(42))
+    .andExpect(jsonPath("$[1].deviceId").value(11))
+    .andExpect(jsonPath("$[1].userId").value(42));
+
+    verify(sensorDeviceService).getByUserId(42);
+    verify(sensorDeviceService, never()).getAll();
+    verify(sensorDeviceService, never()).getByUserId(999);
+}
+
+@Test
+void userWithoutSensorsGetsEmptyList()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-list-empty-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(sensorDeviceService.getByUserId(42))
+            .thenReturn(java.util.List.of());
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-list-empty-token"
+                    )
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.length()").value(0));
+
+    verify(sensorDeviceService).getByUserId(42);
+}
+
+@Test
+void unauthenticatedUserCannotListSensors()
+        throws Exception {
+
+    mockMvc.perform(
+            get(BASE)
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotListSensors()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-list-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-list-roleless-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void invalidJwtCannotListSensors()
+        throws Exception {
+
+    when(jwtService.verify("invalid-sensor-list-token"))
+            .thenThrow(
+                    new JwtException("Invalid JWT")
+            );
+
+    mockMvc.perform(
+            get(BASE)
+                    .header(
+                            "Authorization",
+                            "Bearer invalid-sensor-list-token"
+                    )
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
 
 
 
