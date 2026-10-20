@@ -20,4 +20,14 @@ public interface SensorDeviceRepository {
 
     // Delete only if the device belongs to this user.
     int deleteOwnedDevice(Integer deviceId, Integer userId);
+    int updateOwnedDevice(
+            Integer deviceId,
+            Integer userId,
+            String name,
+            String location,
+            String flow,
+            String daily,
+            Integer battery,
+            String status
+    );
 }

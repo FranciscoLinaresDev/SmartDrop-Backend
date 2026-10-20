@@ -64,6 +64,30 @@ public class SensorDeviceRepositoryAdapter
         sensorDeviceJpaRepository.deleteById(deviceId);
     }
 
+@Override
+public int updateOwnedDevice(
+        Integer deviceId,
+        Integer userId,
+        String name,
+        String location,
+        String flow,
+        String daily,
+        Integer battery,
+        String status) {
+
+    return sensorDeviceJpaRepository.updateOwnedDevice(
+            deviceId,
+            userId,
+            name,
+            location,
+            flow,
+            daily,
+            battery,
+            status
+    );
+}
+
+
     @Override
     public int deleteOwnedDevice(
             Integer deviceId,

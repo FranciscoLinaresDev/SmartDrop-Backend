@@ -63,42 +63,55 @@ public class SensorDeviceService {
         return sensorDeviceRepository.findByUserId(userId);
     }
 
-    public Optional<SensorDevice> updateDeviceForUser(
-            Integer deviceId,
-            Integer authenticatedUserId,
-            String name,
-            String location,
-            String flow,
-            String daily,
-            Integer battery,
-            String status) {
 
-        validateAuthenticatedUser(authenticatedUserId);
+public Optional<SensorDevice> updateDeviceForUser(
+        Integer deviceId,
+        Integer authenticatedUserId,
+        String name,
+        String location,
+        String flow,
+        String daily,
+        Integer battery,
+        String status) {
 
-        if (deviceId == null || deviceId <= 0) {
-            return Optional.empty();
-        }
+    validateAuthenticatedUser(authenticatedUserId);
 
-        return sensorDeviceRepository.findById(deviceId)
-                .filter(existing ->
-                        authenticatedUserId.equals(existing.userId())
-                )
-                .map(existing -> {
-
-                    SensorDevice updated = new SensorDevice(
-                            existing.deviceId(),
-                            existing.userId(),
-                            name,
-                            location,
-                            flow,
-                            daily,
-                            battery,
-                            status
-                    );
-
-                    return sensorDeviceRepository.save(updated);
-                });
+    if (deviceId == null || deviceId <= 0) {
+        return Optional.empty();
     }
+
+    // Validate the domain data before executing SQL.
+    new SensorDevice(
+            deviceId,
+            authenticatedUserId,
+            name,
+            location,
+            flow,
+            daily,
+            battery,
+            status
+    );
+
+    int updatedRows = sensorDeviceRepository.updateOwnedDevice(
+            deviceId,
+            authenticatedUserId,
+            name,
+            location,
+            flow,
+            daily,
+            battery,
+            status
+    );
+
+    if (updatedRows != 1) {
+        return Optional.empty();
+    }
+
+    return sensorDeviceRepository.findById(deviceId)
+            .filter(device ->
+                    authenticatedUserId.equals(device.userId())
+            );
+}
 
     public boolean deleteDeviceForUser(
             Integer deviceId,

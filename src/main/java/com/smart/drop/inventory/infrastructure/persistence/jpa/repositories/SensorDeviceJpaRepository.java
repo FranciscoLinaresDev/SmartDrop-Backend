@@ -28,4 +28,30 @@ public interface SensorDeviceJpaRepository
             @Param("deviceId") Integer deviceId,
             @Param("userId") Integer userId
     );
+
+    @Modifying(
+            flushAutomatically = true,
+            clearAutomatically = true
+    )
+    @Query("""
+            UPDATE SensorDeviceEntity s
+            SET s.name = :name,
+                s.location = :location,
+                s.flow = :flow,
+                s.daily = :daily,
+                s.battery = :battery,
+                s.status = :status
+            WHERE s.deviceId = :deviceId
+              AND s.userId = :userId
+            """)
+    int updateOwnedDevice(
+            @Param("deviceId") Integer deviceId,
+            @Param("userId") Integer userId,
+            @Param("name") String name,
+            @Param("location") String location,
+            @Param("flow") String flow,
+            @Param("daily") String daily,
+            @Param("battery") Integer battery,
+            @Param("status") String status
+    );
 }
