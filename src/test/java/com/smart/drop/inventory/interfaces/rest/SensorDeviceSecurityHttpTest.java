@@ -1,0 +1,290 @@
+
+package com.smart.drop.inventory.interfaces.rest;
+
+import com.smart.drop.iam.domain.model.Role;
+import com.smart.drop.iam.domain.model.User;
+import com.smart.drop.iam.domain.model.repositories.UserRepository;
+
+import com.smart.drop.inventory.application.services.SensorDeviceService;
+import com.smart.drop.inventory.domain.model.entities.SensorDevice;
+
+import com.smart.drop.shared.infrastructure.security.JwtService;
+import com.smart.drop.shared.infrastructure.security.SecurityConfig;
+
+import io.jsonwebtoken.JwtException;
+import io.jsonwebtoken.Jwts;
+
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
+import org.springframework.context.annotation.Import;
+import org.springframework.data.jpa.mapping.JpaMetamodelMappingContext;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.time.LocalDateTime;
+import java.util.HashSet;
+import java.util.Optional;
+import java.util.Set;
+
+import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(SensorDeviceController.class)
+@Import(SecurityConfig.class)
+class SensorDeviceSecurityHttpTest {
+
+    private static final String BASE =
+            "/api/v1/inventory/devices";
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockitoBean
+    private SensorDeviceService sensorDeviceService;
+
+    @MockitoBean
+    private JwtService jwtService;
+
+    @MockitoBean
+    private UserRepository userRepository;
+
+    @MockitoBean(name = "jpaMappingContext")
+    private JpaMetamodelMappingContext jpaMappingContext;
+
+    @Test
+    void ownerCanReadOwnSensor() throws Exception {
+
+        mockAuthentication(
+                "sensor-owner-token",
+                42,
+                "ROLE_USER"
+        );
+
+        SensorDevice device = new SensorDevice(
+                10,
+                42,
+                "Sensor Principal",
+                "Cocina",
+                "15",
+                "120",
+                85,
+                "ACTIVE"
+        );
+
+        when(sensorDeviceService.getByIdForUser(10, 42))
+                .thenReturn(Optional.of(device));
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer sensor-owner-token"
+                        )
+        )
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.deviceId").value(10))
+        .andExpect(jsonPath("$.userId").value(42))
+        .andExpect(
+                jsonPath("$.name").value("Sensor Principal")
+        );
+
+        verify(sensorDeviceService)
+                .getByIdForUser(10, 42);
+    }
+
+    @Test
+    void userCannotReadAnotherUsersSensor()
+            throws Exception {
+
+        mockAuthentication(
+                "sensor-foreign-token",
+                42,
+                "ROLE_USER"
+        );
+
+        when(sensorDeviceService.getByIdForUser(10, 42))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer sensor-foreign-token"
+                        )
+        )
+        .andExpect(status().isNotFound());
+
+        verify(sensorDeviceService)
+                .getByIdForUser(10, 42);
+    }
+
+    @Test
+    void nonexistentSensorReturnsNotFound()
+            throws Exception {
+
+        mockAuthentication(
+                "sensor-missing-token",
+                42,
+                "ROLE_USER"
+        );
+
+        when(sensorDeviceService.getByIdForUser(999, 42))
+                .thenReturn(Optional.empty());
+
+        mockMvc.perform(
+                get(BASE + "/999")
+                        .header(
+                                "Authorization",
+                                "Bearer sensor-missing-token"
+                        )
+        )
+        .andExpect(status().isNotFound());
+
+        verify(sensorDeviceService)
+                .getByIdForUser(999, 42);
+    }
+
+    @Test
+    void unauthenticatedUserCannotReadSensor()
+            throws Exception {
+
+        mockMvc.perform(
+                get(BASE + "/10")
+        )
+        .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(sensorDeviceService);
+    }
+
+    @Test
+    void invalidJwtCannotReadSensor()
+            throws Exception {
+
+        when(jwtService.verify("invalid-sensor-token"))
+                .thenThrow(
+                        new JwtException("Invalid JWT")
+                );
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer invalid-sensor-token"
+                        )
+        )
+        .andExpect(status().isUnauthorized());
+
+        verifyNoInteractions(sensorDeviceService);
+    }
+
+    @Test
+    void userWithoutPermittedRoleCannotReadSensor()
+            throws Exception {
+
+        mockAuthentication(
+                "sensor-roleless-token",
+                42,
+                null
+        );
+
+        mockMvc.perform(
+                get(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer sensor-roleless-token"
+                        )
+        )
+        .andExpect(status().isForbidden());
+
+        verifyNoInteractions(sensorDeviceService);
+    }
+
+    @Test
+    void otherSensorOperationsRemainBlocked()
+            throws Exception {
+
+        mockAuthentication(
+                "sensor-blocked-token",
+                42,
+                "ROLE_USER"
+        );
+
+        String authorization = "Bearer sensor-blocked-token";
+
+        mockMvc.perform(
+                get(BASE)
+                        .header("Authorization", authorization)
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                get(BASE + "/user/42")
+                        .header("Authorization", authorization)
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                post(BASE)
+                        .header("Authorization", authorization)
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                put(BASE + "/10")
+                        .header("Authorization", authorization)
+        )
+        .andExpect(status().isForbidden());
+
+        mockMvc.perform(
+                delete(BASE + "/10")
+                        .header("Authorization", authorization)
+        )
+        .andExpect(status().isForbidden());
+
+        verifyNoInteractions(sensorDeviceService);
+    }
+
+    private void mockAuthentication(
+            String token,
+            Integer userId,
+            String roleName) {
+
+        Set<Role> roles = new HashSet<>();
+
+        if (roleName != null) {
+
+            roles.add(
+                    Role.createFromDatabase(
+                            "ROLE_ADMIN".equals(roleName)
+                                    ? 1 : 2,
+                            roleName,
+                            "Test role"
+                    )
+            );
+        }
+
+        User user = User.createFromDatabase(
+                userId,
+                "Test User",
+                "user-" + userId + "@example.com",
+                "hashed-password",
+                roles,
+                LocalDateTime.now(),
+                null,
+                false,
+                null
+        );
+
+        when(jwtService.verify(token))
+                .thenReturn(
+                        Jwts.claims()
+                                .subject(userId.toString())
+                                .build()
+                );
+
+        when(userRepository.findById(userId))
+                .thenReturn(Optional.of(user));
+    }
+}

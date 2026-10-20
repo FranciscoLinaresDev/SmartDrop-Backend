@@ -1,7 +1,9 @@
+
 package com.smart.drop.inventory.application.services;
 
 import com.smart.drop.inventory.domain.model.entities.SensorDevice;
 import com.smart.drop.inventory.domain.model.repositories.SensorDeviceRepository;
+
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,18 +16,56 @@ public class SensorDeviceService {
 
     private final SensorDeviceRepository sensorDeviceRepository;
 
-    public SensorDeviceService(SensorDeviceRepository sensorDeviceRepository) {
+    public SensorDeviceService(
+            SensorDeviceRepository sensorDeviceRepository) {
+
         this.sensorDeviceRepository = sensorDeviceRepository;
     }
 
-    public SensorDevice createDevice(Integer userId, String name, String location, String flow, String daily, Integer battery, String status) {
-        SensorDevice device = SensorDevice.create(userId, name, location, flow, daily, battery, status);
+    // Create a new sensor device.
+    public SensorDevice createDevice(
+            Integer userId,
+            String name,
+            String location,
+            String flow,
+            String daily,
+            Integer battery,
+            String status) {
+
+        SensorDevice device = SensorDevice.create(
+                userId,
+                name,
+                location,
+                flow,
+                daily,
+                battery,
+                status
+        );
+
         return sensorDeviceRepository.save(device);
     }
 
+    // Legacy internal lookup.
+    // Do not expose directly through HTTP.
     @Transactional(readOnly = true)
     public Optional<SensorDevice> getById(Integer deviceId) {
         return sensorDeviceRepository.findById(deviceId);
+    }
+
+    // SECURE: Read only devices owned by the authenticated user.
+    @Transactional(readOnly = true)
+    public Optional<SensorDevice> getByIdForUser(
+            Integer deviceId,
+            Integer authenticatedUserId) {
+
+        validateAuthenticatedUser(authenticatedUserId);
+
+        return sensorDeviceRepository.findById(deviceId)
+                .filter(device ->
+                        authenticatedUserId.equals(
+                                device.userId()
+                        )
+                );
     }
 
     @Transactional(readOnly = true)
@@ -33,14 +73,30 @@ public class SensorDeviceService {
         return sensorDeviceRepository.findByUserId(userId);
     }
 
+    // Legacy internal listing.
+    // Do not expose directly through HTTP.
     @Transactional(readOnly = true)
     public List<SensorDevice> getAll() {
         return sensorDeviceRepository.findAll();
     }
 
-    public SensorDevice updateDevice(Integer deviceId, String name, String location, String flow, String daily, Integer battery, String status) {
-        SensorDevice current = sensorDeviceRepository.findById(deviceId)
-                .orElseThrow(() -> new IllegalArgumentException("SensorDevice not found: " + deviceId));
+    // Legacy update. Route remains blocked.
+    public SensorDevice updateDevice(
+            Integer deviceId,
+            String name,
+            String location,
+            String flow,
+            String daily,
+            Integer battery,
+            String status) {
+
+        SensorDevice current = sensorDeviceRepository
+                .findById(deviceId)
+                .orElseThrow(() ->
+                        new IllegalArgumentException(
+                                "SensorDevice not found: " + deviceId
+                        )
+                );
 
         SensorDevice updated = new SensorDevice(
                 current.deviceId(),
@@ -52,10 +108,24 @@ public class SensorDeviceService {
                 battery,
                 status
         );
+
         return sensorDeviceRepository.save(updated);
     }
 
+    // Legacy deletion. Route remains blocked.
     public void deleteById(Integer deviceId) {
         sensorDeviceRepository.deleteById(deviceId);
+    }
+
+    private void validateAuthenticatedUser(
+            Integer authenticatedUserId) {
+
+        if (authenticatedUserId == null
+                || authenticatedUserId <= 0) {
+
+            throw new IllegalArgumentException(
+                    "Invalid authenticated user"
+            );
+        }
     }
 }

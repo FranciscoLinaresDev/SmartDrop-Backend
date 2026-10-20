@@ -109,6 +109,13 @@ public class SecurityConfig {
     "/api/v1/inventory/tanks"
 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+// Sensor devices: authenticated owner-only lookup.
+.requestMatchers(
+    HttpMethod.GET,
+    "/api/v1/inventory/devices/{deviceId}"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
+
                 // Block all other routes by default.
                 .anyRequest().denyAll()
             )
