@@ -185,6 +185,34 @@ public Optional<Tank> replenishForUser(
         return tankRepository.save(replenished);
     }
 
+
+public boolean deleteTankForUser(
+        Integer tankId,
+        Integer authenticatedUserId) {
+
+    if (authenticatedUserId == null
+            || authenticatedUserId <= 0) {
+
+        throw new IllegalArgumentException(
+                "Invalid authenticated user"
+        );
+    }
+
+    Optional<Tank> tank = tankRepository.findById(tankId);
+
+    if (tank.isEmpty()) {
+        return false;
+    }
+
+    if (!authenticatedUserId.equals(tank.get().userId())) {
+        return false;
+    }
+
+    tankRepository.deleteById(tankId);
+
+    return true;
+}
+
     // Delete a tank by ID.
     public void deleteById(Integer tankId) {
         tankRepository.deleteById(tankId);

@@ -149,14 +149,27 @@ public ResponseEntity<TankResponse> replenish(
 
 
     // Still blocked by SecurityConfig.
-    @DeleteMapping("/{tankId}")
-    public ResponseEntity<Void> delete(
-            @PathVariable Integer tankId) {
 
-        tankService.deleteById(tankId);
+@DeleteMapping("/{tankId}")
+public ResponseEntity<Void> delete(
+        @PathVariable Integer tankId,
+        Authentication authentication) {
 
-        return ResponseEntity.noContent().build();
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    boolean deleted = tankService.deleteTankForUser(
+            tankId,
+            authenticatedUserId
+    );
+
+    if (!deleted) {
+        return ResponseEntity.notFound().build();
     }
+
+    return ResponseEntity.noContent().build();
+}
+
 
     private boolean isInvalidTankData(
             String name,

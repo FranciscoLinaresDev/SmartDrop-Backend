@@ -97,6 +97,11 @@ public class SecurityConfig {
                     HttpMethod.PUT,
                     "/api/v1/inventory/tanks/{tankId}/replenish"
                 ).hasAnyRole("USER", "BREWER", "ADMIN")
+                // Delete only tanks owned by the authenticated user.
+                .requestMatchers(
+                    HttpMethod.DELETE,
+                    "/api/v1/inventory/tanks/{tankId}"
+                ).hasAnyRole("USER", "BREWER", "ADMIN")
 
                 // Block all other routes by default.
                 .anyRequest().denyAll()

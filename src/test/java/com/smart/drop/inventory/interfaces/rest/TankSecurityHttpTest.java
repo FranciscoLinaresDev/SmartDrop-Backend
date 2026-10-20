@@ -262,6 +262,7 @@ void userCannotCreateTankForAnotherAccount()
     }
 
 
+
 @Test
 void otherTankOperationsMustRemainBlocked()
         throws Exception {
@@ -272,7 +273,7 @@ void otherTankOperationsMustRemainBlocked()
             "ROLE_USER"
     );
 
-    // Listing all tanks must remain blocked.
+    // Global tank listing remains blocked.
     mockMvc.perform(
             get(BASE)
                     .header(
@@ -282,19 +283,9 @@ void otherTankOperationsMustRemainBlocked()
     )
     .andExpect(status().isForbidden());
 
-    // Listing tanks by an arbitrary user ID remains blocked.
+    // Arbitrary user tank listing remains blocked.
     mockMvc.perform(
             get(BASE + "/user/42")
-                    .header(
-                            "Authorization",
-                            "Bearer authenticated-token"
-                    )
-    )
-    .andExpect(status().isForbidden());
-
-    // Deleting tanks remains blocked.
-    mockMvc.perform(
-            delete(BASE + "/10")
                     .header(
                             "Authorization",
                             "Bearer authenticated-token"
@@ -711,6 +702,140 @@ void invalidJwtCannotReplenishTank()
 
     verifyNoInteractions(tankService);
 }
+
+
+@Test
+void ownerCanDeleteOwnTankThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "delete-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.deleteTankForUser(10, 42))
+            .thenReturn(true);
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer delete-owner-token"
+                    )
+    )
+    .andExpect(status().isNoContent());
+
+    verify(tankService).deleteTankForUser(10, 42);
+    verify(tankService, never()).deleteById(any());
+}
+
+@Test
+void userCannotDeleteAnotherUsersTankThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "delete-foreign-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.deleteTankForUser(10, 42))
+            .thenReturn(false);
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer delete-foreign-token"
+                    )
+    )
+    .andExpect(status().isNotFound());
+
+    verify(tankService).deleteTankForUser(10, 42);
+    verify(tankService, never()).deleteById(any());
+}
+
+@Test
+void nonexistentTankCannotBeDeletedThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "delete-missing-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(tankService.deleteTankForUser(999, 42))
+            .thenReturn(false);
+
+    mockMvc.perform(
+            delete(BASE + "/999")
+                    .header(
+                            "Authorization",
+                            "Bearer delete-missing-token"
+                    )
+    )
+    .andExpect(status().isNotFound());
+
+    verify(tankService).deleteTankForUser(999, 42);
+}
+
+@Test
+void unauthenticatedUserCannotDeleteTank()
+        throws Exception {
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotDeleteTank()
+        throws Exception {
+
+    mockAuthentication(
+            "delete-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer delete-roleless-token"
+                    )
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(tankService);
+}
+
+@Test
+void invalidJwtCannotDeleteTank()
+        throws Exception {
+
+    when(jwtService.verify("invalid-delete-token"))
+            .thenThrow(
+                    new JwtException("Invalid JWT")
+            );
+
+    mockMvc.perform(
+            delete(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer invalid-delete-token"
+                    )
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(tankService);
+}
+
 
 
 
