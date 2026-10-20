@@ -20,7 +20,8 @@ public class TankService {
         this.tankRepository = tankRepository;
     }
 
-    // Create a new tank.
+    // Create a tank.
+    // The controller supplies the authenticated user ID.
     public Tank createTank(
             Integer userId,
             String name,
@@ -37,25 +38,20 @@ public class TankService {
         return tankRepository.save(tank);
     }
 
-    // Find tank by ID.
+    // Legacy internal lookup.
+    // Do not expose directly through an HTTP endpoint.
     @Transactional(readOnly = true)
     public Optional<Tank> getById(Integer tankId) {
         return tankRepository.findById(tankId);
     }
 
-    // SECURE: Only return tanks owned by the authenticated user.
+    // Read only a tank owned by the authenticated user.
     @Transactional(readOnly = true)
     public Optional<Tank> getByIdForUser(
             Integer tankId,
             Integer authenticatedUserId) {
 
-        if (authenticatedUserId == null
-                || authenticatedUserId <= 0) {
-
-            throw new IllegalArgumentException(
-                    "Invalid authenticated user"
-            );
-        }
+        validateAuthenticatedUser(authenticatedUserId);
 
         return tankRepository.findById(tankId)
                 .filter(tank ->
@@ -65,156 +61,106 @@ public class TankService {
                 );
     }
 
-    // Find tanks by user ID.
+    // Used by the controller with the authenticated user ID.
     @Transactional(readOnly = true)
     public List<Tank> getByUserId(Integer userId) {
         return tankRepository.findByUserId(userId);
     }
 
-    // Find all tanks.
+    // Legacy internal listing.
+    // Do not expose directly through an HTTP endpoint.
     @Transactional(readOnly = true)
     public List<Tank> getAll() {
         return tankRepository.findAll();
     }
 
-
-public Optional<Tank> updateTankForUser(
-        Integer tankId,
-        Integer authenticatedUserId,
-        String name,
-        Integer capacity,
-        Integer current) {
-
-    if (authenticatedUserId == null
-            || authenticatedUserId <= 0) {
-        throw new IllegalArgumentException(
-                "Invalid authenticated user"
-        );
-    }
-
-    return tankRepository.findById(tankId)
-            .filter(existing ->
-                    authenticatedUserId.equals(existing.userId())
-            )
-            .map(existing -> {
-                Tank updated = new Tank(
-                        existing.tankId(),
-                        existing.userId(),
-                        name,
-                        capacity,
-                        current
-                );
-
-                return tankRepository.save(updated);
-            });
-}
-
-    // Update an existing tank.
-    public Tank updateTank(
+    // Update only a tank owned by the authenticated user.
+    public Optional<Tank> updateTankForUser(
             Integer tankId,
+            Integer authenticatedUserId,
             String name,
             Integer capacity,
             Integer current) {
 
-        Tank existing = tankRepository.findById(tankId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Tank not found: " + tankId
+        validateAuthenticatedUser(authenticatedUserId);
+
+        return tankRepository.findById(tankId)
+                .filter(existing ->
+                        authenticatedUserId.equals(
+                                existing.userId()
                         )
-                );
+                )
+                .map(existing -> {
 
-        Tank updated = new Tank(
-                existing.tankId(),
-                existing.userId(),
-                name,
-                capacity,
-                current
-        );
+                    Tank updated = new Tank(
+                            existing.tankId(),
+                            existing.userId(),
+                            name,
+                            capacity,
+                            current
+                    );
 
-        return tankRepository.save(updated);
+                    return tankRepository.save(updated);
+                });
     }
 
+    // Replenish only a tank owned by the authenticated user.
+    public Optional<Tank> replenishForUser(
+            Integer tankId,
+            Integer authenticatedUserId) {
 
-public Optional<Tank> replenishForUser(
-        Integer tankId,
-        Integer authenticatedUserId) {
+        validateAuthenticatedUser(authenticatedUserId);
 
-    if (authenticatedUserId == null
-            || authenticatedUserId <= 0) {
-        throw new IllegalArgumentException(
-                "Invalid authenticated user"
-        );
-    }
-
-    return tankRepository.findById(tankId)
-            .filter(existing ->
-                    authenticatedUserId.equals(existing.userId())
-            )
-            .map(existing -> {
-
-                Tank replenished = new Tank(
-                        existing.tankId(),
-                        existing.userId(),
-                        existing.name(),
-                        existing.capacity(),
-                        existing.capacity()
-                );
-
-                return tankRepository.save(replenished);
-            });
-}
-
-    // Replenish a tank to its maximum capacity.
-    public Tank replenish(Integer tankId) {
-
-        Tank existing = tankRepository.findById(tankId)
-                .orElseThrow(() ->
-                        new IllegalArgumentException(
-                                "Tank not found: " + tankId
+        return tankRepository.findById(tankId)
+                .filter(existing ->
+                        authenticatedUserId.equals(
+                                existing.userId()
                         )
-                );
+                )
+                .map(existing -> {
 
-        Tank replenished = new Tank(
-                existing.tankId(),
-                existing.userId(),
-                existing.name(),
-                existing.capacity(),
-                existing.capacity()
-        );
+                    Tank replenished = new Tank(
+                            existing.tankId(),
+                            existing.userId(),
+                            existing.name(),
+                            existing.capacity(),
+                            existing.capacity()
+                    );
 
-        return tankRepository.save(replenished);
+                    return tankRepository.save(replenished);
+                });
     }
 
+    // Delete only a tank owned by the authenticated user.
 
 public boolean deleteTankForUser(
         Integer tankId,
         Integer authenticatedUserId) {
 
-    if (authenticatedUserId == null
-            || authenticatedUserId <= 0) {
+    validateAuthenticatedUser(authenticatedUserId);
 
-        throw new IllegalArgumentException(
-                "Invalid authenticated user"
-        );
-    }
-
-    Optional<Tank> tank = tankRepository.findById(tankId);
-
-    if (tank.isEmpty()) {
+    if (tankId == null || tankId <= 0) {
         return false;
     }
 
-    if (!authenticatedUserId.equals(tank.get().userId())) {
-        return false;
-    }
+    int deletedRows = tankRepository.deleteOwnedTank(
+            tankId,
+            authenticatedUserId
+    );
 
-    tankRepository.deleteById(tankId);
-
-    return true;
+    return deletedRows == 1;
 }
 
-    // Delete a tank by ID.
-    public void deleteById(Integer tankId) {
-        tankRepository.deleteById(tankId);
+
+    private void validateAuthenticatedUser(
+            Integer authenticatedUserId) {
+
+        if (authenticatedUserId == null
+                || authenticatedUserId <= 0) {
+
+            throw new IllegalArgumentException(
+                    "Invalid authenticated user"
+            );
+        }
     }
 }

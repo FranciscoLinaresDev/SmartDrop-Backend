@@ -1,13 +1,10 @@
 
 package com.smart.drop.inventory.application.services;
 
-import com.smart.drop.inventory.domain.model.entities.Tank;
 import com.smart.drop.inventory.domain.model.repositories.TankRepository;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
-
-import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -26,45 +23,45 @@ class TankServiceDeleteOwnershipTest {
     @Test
     void ownerCanDeleteOwnTank() {
 
-        Tank tank = new Tank(
-                10, 42, "Mi Cisterna", 1000, 500
-        );
+        when(repository.deleteOwnedTank(10, 42))
+                .thenReturn(1);
 
-        when(repository.findById(10))
-                .thenReturn(Optional.of(tank));
-
-        boolean deleted = service.deleteTankForUser(10, 42);
+        boolean deleted =
+                service.deleteTankForUser(10, 42);
 
         assertTrue(deleted);
-        verify(repository).deleteById(10);
+
+        verify(repository).deleteOwnedTank(10, 42);
+        verifyNoMoreInteractions(repository);
     }
 
     @Test
     void userCannotDeleteAnotherUsersTank() {
 
-        Tank tank = new Tank(
-                10, 99, "Cisterna Privada", 1000, 500
-        );
+        when(repository.deleteOwnedTank(10, 42))
+                .thenReturn(0);
 
-        when(repository.findById(10))
-                .thenReturn(Optional.of(tank));
-
-        boolean deleted = service.deleteTankForUser(10, 42);
+        boolean deleted =
+                service.deleteTankForUser(10, 42);
 
         assertFalse(deleted);
-        verify(repository, never()).deleteById(any());
+
+        verify(repository).deleteOwnedTank(10, 42);
+        verify(repository, never()).findById(any());
     }
 
     @Test
     void nonexistentTankCannotBeDeleted() {
 
-        when(repository.findById(999))
-                .thenReturn(Optional.empty());
+        when(repository.deleteOwnedTank(999, 42))
+                .thenReturn(0);
 
-        boolean deleted = service.deleteTankForUser(999, 42);
+        boolean deleted =
+                service.deleteTankForUser(999, 42);
 
         assertFalse(deleted);
-        verify(repository, never()).deleteById(any());
+
+        verify(repository).deleteOwnedTank(999, 42);
     }
 
     @Test
@@ -79,6 +76,15 @@ class TankServiceDeleteOwnershipTest {
                 IllegalArgumentException.class,
                 () -> service.deleteTankForUser(10, -1)
         );
+
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void invalidTankIdMustNotExecuteDeletion() {
+
+        assertFalse(service.deleteTankForUser(null, 42));
+        assertFalse(service.deleteTankForUser(-1, 42));
 
         verifyNoInteractions(repository);
     }
