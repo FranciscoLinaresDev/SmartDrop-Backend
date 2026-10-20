@@ -80,6 +80,47 @@ public class SensorDeviceService {
         return sensorDeviceRepository.findAll();
     }
 
+
+@Transactional
+public Optional<SensorDevice> updateDeviceForUser(
+        Integer deviceId,
+        Integer authenticatedUserId,
+        String name,
+        String location,
+        String flow,
+        String daily,
+        Integer battery,
+        String status) {
+
+    validateAuthenticatedUser(authenticatedUserId);
+
+    if (deviceId == null || deviceId <= 0) {
+        return Optional.empty();
+    }
+
+    return sensorDeviceRepository.findById(deviceId)
+            .filter(existing ->
+                    authenticatedUserId.equals(
+                            existing.userId()
+                    )
+            )
+            .map(existing -> {
+
+                SensorDevice updated = new SensorDevice(
+                        existing.deviceId(),
+                        existing.userId(),
+                        name,
+                        location,
+                        flow,
+                        daily,
+                        battery,
+                        status
+                );
+
+                return sensorDeviceRepository.save(updated);
+            });
+}
+
     // Legacy update. Route remains blocked.
     public SensorDevice updateDevice(
             Integer deviceId,

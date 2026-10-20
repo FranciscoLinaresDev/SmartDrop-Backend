@@ -122,23 +122,45 @@ public ResponseEntity<SensorDeviceResponse> create(
     }
 
     // Still blocked by SecurityConfig.
-    @PutMapping("/{deviceId}")
-    public ResponseEntity<SensorDeviceResponse> update(
-            @PathVariable Integer deviceId,
-            @RequestBody UpdateSensorDeviceRequest request) {
 
-        SensorDevice updated = sensorDeviceService.updateDevice(
-                deviceId,
-                request.name(),
-                request.location(),
-                request.flow(),
-                request.daily(),
-                request.battery(),
-                request.status()
-        );
+@PutMapping("/{deviceId}")
+public ResponseEntity<SensorDeviceResponse> update(
+        @PathVariable Integer deviceId,
+        @RequestBody UpdateSensorDeviceRequest request,
+        Authentication authentication) {
 
-        return ResponseEntity.ok(toResponse(updated));
+    Integer authenticatedUserId =
+            getAuthenticatedUserId(authentication);
+
+    // Validate device data before calling the service.
+    if (request.name() == null
+            || request.name().isBlank()
+            || (request.battery() != null
+                && (request.battery() < 0
+                    || request.battery() > 100))) {
+
+        return ResponseEntity.badRequest().build();
     }
+
+    // Ownership is verified inside SensorDeviceService.
+    return sensorDeviceService.updateDeviceForUser(
+                    deviceId,
+                    authenticatedUserId,
+                    request.name(),
+                    request.location(),
+                    request.flow(),
+                    request.daily(),
+                    request.battery(),
+                    request.status()
+            )
+            .map(device ->
+                    ResponseEntity.ok(toResponse(device))
+            )
+            .orElseGet(() ->
+                    ResponseEntity.notFound().build()
+            );
+}
+
 
     // Still blocked by SecurityConfig.
     @DeleteMapping("/{deviceId}")

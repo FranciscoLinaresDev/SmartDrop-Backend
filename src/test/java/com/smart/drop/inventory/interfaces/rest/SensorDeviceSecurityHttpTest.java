@@ -203,6 +203,7 @@ class SensorDeviceSecurityHttpTest {
 
 
 
+
 @Test
 void otherSensorOperationsRemainBlocked()
         throws Exception {
@@ -229,12 +230,6 @@ void otherSensorOperationsRemainBlocked()
     .andExpect(status().isForbidden());
 
     mockMvc.perform(
-            put(BASE + "/10")
-                    .header("Authorization", authorization)
-    )
-    .andExpect(status().isForbidden());
-
-    mockMvc.perform(
             delete(BASE + "/10")
                     .header("Authorization", authorization)
     )
@@ -242,6 +237,7 @@ void otherSensorOperationsRemainBlocked()
 
     verifyNoInteractions(sensorDeviceService);
 }
+
 
 
 @Test
@@ -412,6 +408,306 @@ void userWithoutAllowedRoleCannotCreateSensor()
 
     verifyNoInteractions(sensorDeviceService);
 }
+
+@Test
+void ownerCanUpdateOwnSensorThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-update-owner-token",
+            42,
+            "ROLE_USER"
+    );
+
+    SensorDevice updated = new SensorDevice(
+            10, 42,
+            "Sensor Actualizado",
+            "Sala",
+            "20",
+            "150",
+            90,
+            "ACTIVE"
+    );
+
+    when(sensorDeviceService.updateDeviceForUser(
+            10, 42,
+            "Sensor Actualizado",
+            "Sala",
+            "20",
+            "150",
+            90,
+            "ACTIVE"
+    )).thenReturn(Optional.of(updated));
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-update-owner-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "name": "Sensor Actualizado",
+                          "location": "Sala",
+                          "flow": "20",
+                          "daily": "150",
+                          "battery": 90,
+                          "status": "ACTIVE"
+                        }
+                        """)
+    )
+    .andExpect(status().isOk())
+    .andExpect(jsonPath("$.deviceId").value(10))
+    .andExpect(jsonPath("$.userId").value(42))
+    .andExpect(jsonPath("$.battery").value(90));
+
+    verify(sensorDeviceService).updateDeviceForUser(
+            10, 42,
+            "Sensor Actualizado",
+            "Sala",
+            "20",
+            "150",
+            90,
+            "ACTIVE"
+    );
+
+    verify(sensorDeviceService, never()).updateDevice(
+            any(), any(), any(), any(),
+            any(), any(), any()
+    );
+}
+
+@Test
+void userCannotUpdateAnotherUsersSensorThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-update-foreign-token",
+            42,
+            "ROLE_USER"
+    );
+
+    when(sensorDeviceService.updateDeviceForUser(
+            10, 42,
+            "Intento Indebido",
+            "Sala",
+            "20",
+            "150",
+            90,
+            "ACTIVE"
+    )).thenReturn(Optional.empty());
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-update-foreign-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "name": "Intento Indebido",
+                          "location": "Sala",
+                          "flow": "20",
+                          "daily": "150",
+                          "battery": 90,
+                          "status": "ACTIVE"
+                        }
+                        """)
+    )
+    .andExpect(status().isNotFound());
+
+    verify(sensorDeviceService).updateDeviceForUser(
+            10, 42,
+            "Intento Indebido",
+            "Sala",
+            "20",
+            "150",
+            90,
+            "ACTIVE"
+    );
+}
+
+@Test
+void nonexistentSensorCannotBeUpdatedThroughHttp()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-update-missing-token",
+            42,
+            "ROLE_USER"
+    );
+
+    mockMvc.perform(
+            put(BASE + "/999")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-update-missing-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "name": "Sensor",
+                          "location": "Sala",
+                          "flow": "20",
+                          "daily": "150",
+                          "battery": 90,
+                          "status": "ACTIVE"
+                        }
+                        """)
+    )
+    .andExpect(status().isNotFound());
+
+    verify(sensorDeviceService).updateDeviceForUser(
+            999, 42,
+            "Sensor",
+            "Sala",
+            "20",
+            "150",
+            90,
+            "ACTIVE"
+    );
+}
+
+@Test
+void invalidSensorUpdateMustReturnBadRequest()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-invalid-update-token",
+            42,
+            "ROLE_USER"
+    );
+
+    String[] invalidRequests = {
+            """
+            {
+              "name": "",
+              "battery": 85
+            }
+            """,
+            """
+            {
+              "name": "Sensor",
+              "battery": -1
+            }
+            """,
+            """
+            {
+              "name": "Sensor",
+              "battery": 101
+            }
+            """
+    };
+
+    for (String request : invalidRequests) {
+
+        mockMvc.perform(
+                put(BASE + "/10")
+                        .header(
+                                "Authorization",
+                                "Bearer sensor-invalid-update-token"
+                        )
+                        .contentType(
+                                org.springframework.http.MediaType.APPLICATION_JSON
+                        )
+                        .content(request)
+        )
+        .andExpect(status().isBadRequest());
+    }
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void unauthenticatedUserCannotUpdateSensor()
+        throws Exception {
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "name": "Sensor",
+                          "battery": 85
+                        }
+                        """)
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void userWithoutAllowedRoleCannotUpdateSensor()
+        throws Exception {
+
+    mockAuthentication(
+            "sensor-update-roleless-token",
+            42,
+            null
+    );
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer sensor-update-roleless-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "name": "Sensor",
+                          "battery": 85
+                        }
+                        """)
+    )
+    .andExpect(status().isForbidden());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
+@Test
+void invalidJwtCannotUpdateSensor()
+        throws Exception {
+
+    when(jwtService.verify("invalid-sensor-update-token"))
+            .thenThrow(
+                    new JwtException("Invalid JWT")
+            );
+
+    mockMvc.perform(
+            put(BASE + "/10")
+                    .header(
+                            "Authorization",
+                            "Bearer invalid-sensor-update-token"
+                    )
+                    .contentType(
+                            org.springframework.http.MediaType.APPLICATION_JSON
+                    )
+                    .content("""
+                        {
+                          "name": "Sensor",
+                          "battery": 85
+                        }
+                        """)
+    )
+    .andExpect(status().isUnauthorized());
+
+    verifyNoInteractions(sensorDeviceService);
+}
+
 
 
     private void mockAuthentication(

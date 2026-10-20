@@ -121,6 +121,13 @@ public class SecurityConfig {
     "/api/v1/inventory/devices"
 ).hasAnyRole("USER", "BREWER", "ADMIN")
 
+// Update only sensor devices owned by the authenticated user.
+.requestMatchers(
+    HttpMethod.PUT,
+    "/api/v1/inventory/devices/{deviceId}"
+).hasAnyRole("USER", "BREWER", "ADMIN")
+
+
 
 
                 // Block all other routes by default.
