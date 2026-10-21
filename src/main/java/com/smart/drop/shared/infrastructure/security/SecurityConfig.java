@@ -120,20 +120,24 @@ public class SecurityConfig {
                         .anyRequest().denyAll()
                 )
 
+
                 .exceptionHandling(exceptions -> exceptions
+
                         .authenticationEntryPoint(
                                 (request, response, exception) ->
-                                        response.sendError(
+                                        response.setStatus(
                                                 HttpServletResponse.SC_UNAUTHORIZED
                                         )
                         )
+
                         .accessDeniedHandler(
                                 (request, response, exception) ->
-                                        response.sendError(
+                                        response.setStatus(
                                                 HttpServletResponse.SC_FORBIDDEN
                                         )
                         )
                 )
+
 
                 .httpBasic(basic -> basic.disable())
                 .formLogin(form -> form.disable())
