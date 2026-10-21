@@ -14,6 +14,8 @@ import com.smart.drop.shared.infrastructure.security.SecurityConfig;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
 
+
+import org.springframework.http.MediaType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
@@ -942,6 +944,43 @@ void invalidJwtCannotListSensors()
 
     verifyNoInteractions(sensorDeviceService);
 }
+
+
+    @Test
+    void demoCanReadSensorsButCannotModifyThem() throws Exception {
+
+        mockAuthentication("demo-sensor-token", 42, "ROLE_DEMO");
+
+        when(sensorDeviceService.getByUserId(42))
+                .thenReturn(java.util.List.of());
+
+        mockMvc.perform(get(BASE)
+                        .header("Authorization", "Bearer demo-sensor-token"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(BASE)
+                        .header("Authorization", "Bearer demo-sensor-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                {"name":"Sensor Demo","location":"Cisterna"}
+                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put(BASE + "/10")
+                        .header("Authorization", "Bearer demo-sensor-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                {"name":"Sensor Modificado","location":"Cisterna"}
+                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete(BASE + "/10")
+                        .header("Authorization", "Bearer demo-sensor-token"))
+                .andExpect(status().isForbidden());
+
+        verify(sensorDeviceService).getByUserId(42);
+        verifyNoMoreInteractions(sensorDeviceService);
+    }
 
 
 

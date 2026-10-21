@@ -1018,6 +1018,48 @@ void missingCurrentMustBeRejectedOnCreateAndUpdate()
 }
 
 
+    @Test
+    void demoCanReadTanksButCannotModifyThem() throws Exception {
+
+        mockAuthentication("demo-tank-token", 42, "ROLE_DEMO");
+
+        when(tankService.getByUserId(42))
+                .thenReturn(List.of());
+
+        mockMvc.perform(get(BASE)
+                        .header("Authorization", "Bearer demo-tank-token"))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(post(BASE)
+                        .header("Authorization", "Bearer demo-tank-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                {"name":"Tanque Demo","capacity":1000,"current":500}
+                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put(BASE + "/10")
+                        .header("Authorization", "Bearer demo-tank-token")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                {"name":"Tanque Modificado","capacity":1000,"current":500}
+                """))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(put(BASE + "/10/replenish")
+                        .header("Authorization", "Bearer demo-tank-token"))
+                .andExpect(status().isForbidden());
+
+        mockMvc.perform(delete(BASE + "/10")
+                        .header("Authorization", "Bearer demo-tank-token"))
+                .andExpect(status().isForbidden());
+
+        verify(tankService).getByUserId(42);
+        verifyNoMoreInteractions(tankService);
+    }
+
+
+
 
 
 
