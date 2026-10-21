@@ -28,153 +28,123 @@ public class SecurityConfig {
             UserRepository userRepository) throws Exception {
 
         http
-            .csrf(csrf -> csrf.disable())
+                .csrf(csrf -> csrf.disable())
 
-            .sessionManagement(session ->
-                session.sessionCreationPolicy(
-                    SessionCreationPolicy.STATELESS
-                )
-            )
-
-            .authorizeHttpRequests(auth -> auth
-
-                // Public authentication endpoints.
-                .requestMatchers(
-                    HttpMethod.POST,
-
-                    "/api/v1/iam/auth/login",
-                    "/api/iam/auth/login",
-                    "/api/identity/auth/login",
-
-                    "/api/v1/iam/auth/2fa/verify",
-                    "/api/iam/auth/2fa/verify",
-                    "/api/identity/auth/2fa/verify"
-                ).permitAll()
-
-                // Only administrators can list all users.
-                .requestMatchers(
-                    HttpMethod.GET,
-
-                    "/api/v1/iam/auth/users",
-                    "/api/iam/auth/users",
-                    "/api/identity/auth/users"
-                ).hasRole("ADMIN")
-
-                // Only administrators can manage roles.
-                .requestMatchers(
-                    HttpMethod.POST,
-
-                    "/api/v1/iam/auth/assign-role",
-                    "/api/iam/auth/assign-role",
-                    "/api/identity/auth/assign-role",
-
-                    "/api/v1/iam/auth/revoke-role",
-                    "/api/iam/auth/revoke-role",
-                    "/api/identity/auth/revoke-role"
-                ).hasRole("ADMIN")
-
-                // Read an individual tank.
-                // Ownership is checked by TankService.
-                .requestMatchers(
-                    HttpMethod.GET,
-                    "/api/v1/inventory/tanks/{tankId}"
-                ).hasAnyRole("USER", "BREWER", "ADMIN")
-
-                // Create a tank for the authenticated user.
-                .requestMatchers(
-                    HttpMethod.POST,
-                    "/api/v1/inventory/tanks"
-                ).hasAnyRole("USER", "BREWER", "ADMIN")
-
-                // Update a tank owned by the authenticated user.
-                .requestMatchers(
-                    HttpMethod.PUT,
-                    "/api/v1/inventory/tanks/{tankId}"
-                ).hasAnyRole("USER", "BREWER", "ADMIN")
-
-                // Replenish a tank owned by the authenticated user.
-                .requestMatchers(
-                    HttpMethod.PUT,
-                    "/api/v1/inventory/tanks/{tankId}/replenish"
-                ).hasAnyRole("USER", "BREWER", "ADMIN")
-                // Delete only tanks owned by the authenticated user.
-                .requestMatchers(
-                    HttpMethod.DELETE,
-                    "/api/v1/inventory/tanks/{tankId}"
-                ).hasAnyRole("USER", "BREWER", "ADMIN")
-
-// List only tanks belonging to the authenticated user.
-.requestMatchers(
-    HttpMethod.GET,
-    "/api/v1/inventory/tanks"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-
-// Sensor devices: authenticated owner-only lookup.
-.requestMatchers(
-    HttpMethod.GET,
-    "/api/v1/inventory/devices/{deviceId}"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-
-// Create sensors for the authenticated user.
-.requestMatchers(
-    HttpMethod.POST,
-    "/api/v1/inventory/devices"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-
-// Update only sensor devices owned by the authenticated user.
-.requestMatchers(
-    HttpMethod.PUT,
-    "/api/v1/inventory/devices/{deviceId}"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-
-// Delete only sensors owned by the authenticated user.
-.requestMatchers(
-    HttpMethod.DELETE,
-    "/api/v1/inventory/devices/{deviceId}"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-
-// List only the authenticated user's sensor devices.
-.requestMatchers(
-    HttpMethod.GET,
-    "/api/v1/inventory/devices"
-).hasAnyRole("USER", "BREWER", "ADMIN")
-
-
-
-
-
-
-                // Block all other routes by default.
-                .anyRequest().denyAll()
-            )
-
-            .exceptionHandling(exceptions -> exceptions
-
-                .authenticationEntryPoint(
-                    (request, response, exception) ->
-                        response.sendError(
-                            HttpServletResponse.SC_UNAUTHORIZED
+                .sessionManagement(session ->
+                        session.sessionCreationPolicy(
+                                SessionCreationPolicy.STATELESS
                         )
                 )
 
-                .accessDeniedHandler(
-                    (request, response, exception) ->
-                        response.sendError(
-                            HttpServletResponse.SC_FORBIDDEN
+                .authorizeHttpRequests(auth -> auth
+
+                        // Inicio de sesión y verificación 2FA.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/iam/auth/login",
+                                "/api/iam/auth/login",
+                                "/api/identity/auth/login",
+                                "/api/v1/iam/auth/2fa/verify",
+                                "/api/iam/auth/2fa/verify",
+                                "/api/identity/auth/2fa/verify"
+                        ).permitAll()
+
+                        // Gestión de usuarios: solo administradores.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/iam/auth/users",
+                                "/api/iam/auth/users",
+                                "/api/identity/auth/users"
+                        ).hasRole("ADMIN")
+
+                        // Gestión de roles: solo administradores.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/iam/auth/assign-role",
+                                "/api/iam/auth/assign-role",
+                                "/api/identity/auth/assign-role",
+                                "/api/v1/iam/auth/revoke-role",
+                                "/api/iam/auth/revoke-role",
+                                "/api/identity/auth/revoke-role"
+                        ).hasRole("ADMIN")
+
+                        // TANQUES - Lectura permitida para DEMO.
+                        // Los controladores verifican la propiedad del recurso.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/inventory/tanks",
+                                "/api/v1/inventory/tanks/{tankId}"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN", "DEMO")
+
+                        // TANQUES - Escritura prohibida para DEMO.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/inventory/tanks"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN")
+
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/v1/inventory/tanks/{tankId}",
+                                "/api/v1/inventory/tanks/{tankId}/replenish"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN")
+
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/v1/inventory/tanks/{tankId}"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN")
+
+                        // SENSORES - Lectura permitida para DEMO.
+                        .requestMatchers(
+                                HttpMethod.GET,
+                                "/api/v1/inventory/devices",
+                                "/api/v1/inventory/devices/{deviceId}"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN", "DEMO")
+
+                        // SENSORES - Escritura prohibida para DEMO.
+                        .requestMatchers(
+                                HttpMethod.POST,
+                                "/api/v1/inventory/devices"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN")
+
+                        .requestMatchers(
+                                HttpMethod.PUT,
+                                "/api/v1/inventory/devices/{deviceId}"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN")
+
+                        .requestMatchers(
+                                HttpMethod.DELETE,
+                                "/api/v1/inventory/devices/{deviceId}"
+                        ).hasAnyRole("USER", "BREWER", "ADMIN")
+
+                        // Todas las demás rutas permanecen bloqueadas.
+                        .anyRequest().denyAll()
+                )
+
+                .exceptionHandling(exceptions -> exceptions
+                        .authenticationEntryPoint(
+                                (request, response, exception) ->
+                                        response.sendError(
+                                                HttpServletResponse.SC_UNAUTHORIZED
+                                        )
+                        )
+                        .accessDeniedHandler(
+                                (request, response, exception) ->
+                                        response.sendError(
+                                                HttpServletResponse.SC_FORBIDDEN
+                                        )
                         )
                 )
-            )
 
-            .httpBasic(basic -> basic.disable())
-            .formLogin(form -> form.disable())
+                .httpBasic(basic -> basic.disable())
+                .formLogin(form -> form.disable())
 
-            .addFilterBefore(
-                new JwtAuthenticationFilter(
-                    jwtService,
-                    userRepository
-                ),
-                UsernamePasswordAuthenticationFilter.class
-            );
+                .addFilterBefore(
+                        new JwtAuthenticationFilter(
+                                jwtService,
+                                userRepository
+                        ),
+                        UsernamePasswordAuthenticationFilter.class
+                );
 
         return http.build();
     }
